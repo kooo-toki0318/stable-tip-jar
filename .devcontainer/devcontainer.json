@@ -1,0 +1,25 @@
+{
+  "name": "Arc Tip Jar",
+
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  "remoteUser": "foundry",
+
+  "workspaceFolder": "/workspace/project",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/project,type=bind",
+
+  "mounts": [
+    "source=foundry-data,target=/home/foundry/.foundry,type=volume"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "NomicFoundation.hardhat-solidity"
+      ]
+    }
+  }
+}

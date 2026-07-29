@@ -1,0 +1,27 @@
+# Foundry build and deployment artifacts
+cache/
+out/
+broadcast/
+coverage/
+lcov.info
+
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+keystore/
+*.key
+*.pem
+
+# Logs and temporary files
+*.log
+.logs/
+.ignore/
+archive/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
