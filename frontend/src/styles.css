@@ -171,7 +171,7 @@ button:disabled {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 14px;
   margin-bottom: 14px;
 }
@@ -199,6 +199,30 @@ button:disabled {
   margin-top: 11px;
   font-size: clamp(1.25rem, 3vw, 2rem);
   letter-spacing: -0.04em;
+}
+
+.stat-card small {
+  display: block;
+  min-height: 2.6em;
+  margin-top: 9px;
+  color: #71847b;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.claim-button {
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  color: #06110c;
+  background: #69f5ad;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.claim-button:hover:not(:disabled) {
+  background: #8af9c1;
 }
 
 .content-grid {
@@ -435,6 +459,12 @@ footer a:hover {
   color: #9af5c2;
 }
 
+@media (max-width: 1000px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 820px) {
   .header-actions > a {
     display: none;
@@ -444,7 +474,6 @@ footer a:hover {
     padding-top: 74px;
   }
 
-  .stats-grid,
   .content-grid {
     grid-template-columns: 1fr;
   }
@@ -483,6 +512,10 @@ footer a:hover {
 
   .hero h1 {
     font-size: 3.25rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 
   .panel,

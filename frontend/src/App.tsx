@@ -78,10 +78,13 @@ export default function App() {
   const [amount, setAmount] = useState("0.01");
   const [message, setMessage] = useState("Thanks for building on Arc!");
   const [stats, setStats] = useState<JarStats>(emptyStats);
+  const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
+  const [contractOwner, setContractOwner] = useState<Address | null>(null);
   const [tips, setTips] = useState<Tip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
   const [isContractReady, setIsContractReady] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [txHash, setTxHash] = useState<Hash | null>(null);
@@ -97,6 +100,10 @@ export default function App() {
     [chain],
   );
   const isCorrectNetwork = chainId === chain.id;
+  const isOwner =
+    account !== null &&
+    contractOwner !== null &&
+    account.toLowerCase() === contractOwner.toLowerCase();
   const contractExplorerUrl = `${chain.blockExplorers?.default.url}/address/${contractAddress}`;
   const messageBytes = useMemo(
     () => new TextEncoder().encode(message).length,
@@ -122,7 +129,7 @@ export default function App() {
         );
       }
 
-      const [balance, totalReceived, totalWithdrawn, tipCount] =
+      const [balance, totalReceived, totalWithdrawn, tipCount, owner] =
         await Promise.all([
           publicClient.readContract({
             address: contractAddress,
@@ -144,9 +151,15 @@ export default function App() {
             abi: arcTipJarAbi,
             functionName: "tipCount",
           }),
+          publicClient.readContract({
+            address: contractAddress,
+            abi: arcTipJarAbi,
+            functionName: "owner",
+          }),
         ]);
 
       setStats({ balance, totalReceived, totalWithdrawn, tipCount });
+      setContractOwner(owner);
       setIsContractReady(true);
 
       const visibleCount = tipCount > 8n ? 8n : tipCount;
@@ -178,11 +191,25 @@ export default function App() {
       setTips(recentTips);
     } catch (error) {
       setIsContractReady(false);
+      setContractOwner(null);
       setStatus(`Could not load contract data: ${getErrorMessage(error)}`);
     } finally {
       setIsLoading(false);
     }
   }, [chain.id, chain.name, contractAddress, publicClient]);
+
+  const refreshWalletBalance = useCallback(async () => {
+    if (!account) {
+      setWalletBalance(null);
+      return;
+    }
+
+    try {
+      setWalletBalance(await publicClient.getBalance({ address: account }));
+    } catch {
+      setWalletBalance(null);
+    }
+  }, [account, publicClient]);
 
   const syncWalletState = useCallback(async () => {
     if (!window.ethereum) return;
@@ -203,6 +230,10 @@ export default function App() {
     void refreshData();
     void syncWalletState();
   }, [refreshData, syncWalletState]);
+
+  useEffect(() => {
+    void refreshWalletBalance();
+  }, [refreshWalletBalance]);
 
   useEffect(() => {
     const provider = window.ethereum;
@@ -252,13 +283,39 @@ export default function App() {
       const detectedNetwork = getArcNetworkByChainId(walletChainId);
       if (detectedNetwork) {
         setSelectedNetworkKey(detectedNetwork.key);
+        setStatus(`Connected on ${detectedNetwork.chain.name}. Network was not changed.`);
       } else {
         await switchToNetwork(selectedNetwork);
+        setStatus(`Wallet was automatically switched to ${selectedNetwork.chain.name}.`);
       }
     } catch (error) {
       setStatus(getErrorMessage(error));
     } finally {
       setIsConnecting(false);
+    }
+  }
+
+  async function disconnectWallet() {
+    const provider = window.ethereum;
+    try {
+      if (provider) {
+        const request = provider.request as unknown as (args: {
+          method: string;
+          params?: readonly unknown[];
+        }) => Promise<unknown>;
+        await request({
+          method: "wallet_revokePermissions",
+          params: [{ eth_accounts: {} }],
+        });
+      }
+    } catch {
+      // Not every injected wallet supports permission revocation. The dApp can
+      // still end its local session and reconnect explicitly when requested.
+    } finally {
+      setAccount(null);
+      setChainId(null);
+      setTxHash(null);
+      setStatus("Wallet disconnected from this dApp.");
     }
   }
 
@@ -370,11 +427,54 @@ export default function App() {
       setStatus(`Tip confirmed on ${chain.name}.`);
       setAmount("0.01");
       setMessage("");
-      await refreshData();
+      await Promise.all([refreshData(), refreshWalletBalance()]);
     } catch (error) {
       setStatus(getErrorMessage(error));
     } finally {
       setIsSending(false);
+    }
+  }
+
+  async function claimTips() {
+    setStatus("");
+    setTxHash(null);
+
+    if (!window.ethereum || !account || !isOwner) {
+      setStatus("Only the Tip Jar owner can claim collected tips.");
+      return;
+    }
+    if (!isCorrectNetwork) {
+      setStatus(`Switch to ${chain.name} before claiming tips.`);
+      return;
+    }
+    if (stats.balance === 0n) {
+      setStatus("There are no tips available to claim.");
+      return;
+    }
+
+    setIsClaiming(true);
+    try {
+      const walletClient = createWalletClient({
+        account,
+        chain,
+        transport: custom(window.ethereum),
+      });
+      const hash = await walletClient.writeContract({
+        address: contractAddress,
+        abi: arcTipJarAbi,
+        functionName: "withdrawAll",
+        args: [account],
+      });
+
+      setTxHash(hash);
+      setStatus("Claim submitted. Waiting for confirmation…");
+      await publicClient.waitForTransactionReceipt({ hash });
+      setStatus(`Claim confirmed on ${chain.name}.`);
+      await Promise.all([refreshData(), refreshWalletBalance()]);
+    } catch (error) {
+      setStatus(getErrorMessage(error));
+    } finally {
+      setIsClaiming(false);
     }
   }
 
@@ -414,10 +514,14 @@ export default function App() {
           <button
             className="wallet-button"
             type="button"
-            onClick={connectWallet}
+            onClick={account ? disconnectWallet : connectWallet}
             disabled={isConnecting}
           >
-            {account ? shortAddress(account) : isConnecting ? "Connecting…" : "Connect wallet"}
+            {account
+              ? `Disconnect ${shortAddress(account)}`
+              : isConnecting
+                ? "Connecting…"
+                : "Connect wallet"}
           </button>
         </div>
       </header>
@@ -432,17 +536,35 @@ export default function App() {
       </section>
 
       <section className="stats-grid" aria-label="Tip jar statistics">
-        <article className="stat-card">
-          <span>Current balance</span>
+        <article className="stat-card claim-card">
+          <span>Tips available to claim</span>
           <strong>{isLoading ? "—" : formatUsdc(stats.balance)} USDC</strong>
+          <small>USDC currently held by the Tip Jar contract</small>
+          {isOwner && (
+            <button
+              className="claim-button"
+              type="button"
+              onClick={() => void claimTips()}
+              disabled={isClaiming || stats.balance === 0n || !isCorrectNetwork}
+            >
+              {isClaiming ? "Claiming…" : "Claim all tips"}
+            </button>
+          )}
         </article>
         <article className="stat-card">
-          <span>Total received</span>
+          <span>Total tips received</span>
           <strong>{isLoading ? "—" : formatUsdc(stats.totalReceived)} USDC</strong>
+          <small>All tips received, including claimed tips</small>
         </article>
         <article className="stat-card">
-          <span>Onchain tips</span>
+          <span>Connected wallet balance</span>
+          <strong>{account && walletBalance !== null ? formatUsdc(walletBalance) : "—"} USDC</strong>
+          <small>{account ? `On ${chain.name}` : "Connect a wallet to view its balance"}</small>
+        </article>
+        <article className="stat-card">
+          <span>Onchain tip count</span>
           <strong>{isLoading ? "—" : stats.tipCount.toString()}</strong>
+          <small>Number of recorded tip transactions</small>
         </article>
       </section>
 
@@ -502,7 +624,7 @@ export default function App() {
               <button
                 className="primary-button"
                 type="submit"
-                disabled={isSending || !isContractReady || messageBytes > 280}
+                disabled={isSending || messageBytes > 280}
               >
                 {isSending ? "Sending…" : "Send tip"}
               </button>

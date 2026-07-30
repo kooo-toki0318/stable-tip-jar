@@ -8,6 +8,20 @@ export const arcTipJarAbi = [
   },
   {
     type: "function",
+    name: "owner",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "withdrawAll",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "recipient", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "tipCount",
     stateMutability: "view",
     inputs: [],
