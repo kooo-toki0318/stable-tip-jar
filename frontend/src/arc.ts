@@ -7,6 +7,7 @@ export type ArcNetworkConfig = {
   label: string;
   chain: Chain;
   contractAddress: Address;
+  browserRpcUrl: string;
   faucetUrl?: string;
 };
 
@@ -49,6 +50,7 @@ export const arcTestnetConfig: ArcNetworkConfig = {
   label: "Arc Testnet",
   chain: arcTestnet,
   contractAddress: testnetContractAddress,
+  browserRpcUrl: "/rpc",
   faucetUrl: "https://faucet.circle.com",
 };
 
@@ -79,6 +81,7 @@ const arcMainnetConfig: ArcNetworkConfig | null =
           },
         }),
         contractAddress: getAddress(mainnetContractAddress),
+        browserRpcUrl: mainnetRpcUrl,
       }
     : null;
 

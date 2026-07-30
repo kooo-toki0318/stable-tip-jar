@@ -94,6 +94,7 @@ export default function App() {
   const [stats, setStats] = useState<JarStats>(emptyStats);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
   const [contractOwner, setContractOwner] = useState<Address | null>(null);
+  const [claimableTipCount, setClaimableTipCount] = useState<number | null>(null);
   const [tips, setTips] = useState<Tip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -109,9 +110,9 @@ export default function App() {
     () =>
       createPublicClient({
         chain,
-        transport: http(chain.rpcUrls.default.http[0]),
+        transport: http(selectedNetwork.browserRpcUrl),
       }),
-    [chain],
+    [chain, selectedNetwork.browserRpcUrl],
   );
   const isCorrectNetwork = chainId === chain.id;
   const isOwner =
@@ -125,6 +126,7 @@ export default function App() {
   );
 
   const refreshData = useCallback(async () => {
+    if (!account) return;
     setIsLoading(true);
     try {
       const contract = { address: contractAddress, abi: arcTipJarAbi } as const;
@@ -146,15 +148,16 @@ export default function App() {
       setContractOwner(owner);
       setIsContractReady(true);
 
-      const visibleCount = tipCount > 8n ? 8n : tipCount;
+      const readableCount = tipCount > 100n ? 100n : tipCount;
       const indexes = Array.from(
-        { length: Number(visibleCount) },
+        { length: Number(readableCount) },
         (_, offset) => tipCount - 1n - BigInt(offset),
       );
 
       try {
         if (indexes.length === 0) {
           setTips([]);
+          setClaimableTipCount(0);
         } else {
           const tipResults = await withRpcRetry(() =>
             publicClient.multicall({
@@ -167,28 +170,40 @@ export default function App() {
             }),
           );
 
-          setTips(
-            tipResults.map(([sender, tipAmount, timestamp, tipMessage], offset): Tip => ({
+          const loadedTips = tipResults.map(
+            ([sender, tipAmount, timestamp, tipMessage], offset): Tip => ({
               index: indexes[offset],
               sender,
               amount: tipAmount,
               timestamp,
               message: tipMessage,
-            })),
+            }),
           );
+          setTips(loadedTips.slice(0, 8));
+
+          let representedBalance = 0n;
+          let currentTipCount = 0;
+          for (const tip of loadedTips) {
+            if (representedBalance >= balance) break;
+            representedBalance += tip.amount;
+            currentTipCount += 1;
+          }
+          setClaimableTipCount(balance === 0n ? 0 : currentTipCount);
         }
       } catch (error) {
         setTips([]);
+        setClaimableTipCount(null);
         setStatus(`Contract connected, but recent tips could not be loaded: ${getErrorMessage(error)}`);
       }
     } catch (error) {
       setIsContractReady(false);
       setContractOwner(null);
+      setClaimableTipCount(null);
       setStatus(`Could not load contract data: ${getErrorMessage(error)}`);
     } finally {
       setIsLoading(false);
     }
-  }, [chain.id, chain.name, contractAddress, publicClient]);
+  }, [account, contractAddress, publicClient]);
 
   const refreshWalletBalance = useCallback(async () => {
     if (!account) {
@@ -205,6 +220,11 @@ export default function App() {
 
   const syncWalletState = useCallback(async () => {
     if (!window.ethereum) return;
+    if (window.localStorage.getItem("arc-tip-jar-disconnected") === "true") {
+      setAccount(null);
+      setChainId(null);
+      return;
+    }
 
     const [accounts, walletChainId] = await Promise.all([
       window.ethereum.request({ method: "eth_accounts" }) as Promise<Address[]>,
@@ -219,9 +239,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refreshData();
     void syncWalletState();
-  }, [refreshData, syncWalletState]);
+  }, [syncWalletState]);
+
+  useEffect(() => {
+    if (account) {
+      void refreshData();
+      return;
+    }
+
+    setStats(emptyStats);
+    setTips([]);
+    setContractOwner(null);
+    setClaimableTipCount(null);
+    setIsContractReady(false);
+    setIsLoading(false);
+  }, [account, refreshData]);
 
   useEffect(() => {
     void refreshWalletBalance();
@@ -233,6 +266,12 @@ export default function App() {
 
     const handleAccountsChanged = (...args: unknown[]) => {
       const accounts = (args[0] ?? []) as Address[];
+      if (
+        accounts.length > 0 &&
+        window.localStorage.getItem("arc-tip-jar-disconnected") === "true"
+      ) {
+        return;
+      }
       setAccount(accounts[0] ?? null);
     };
 
@@ -265,6 +304,7 @@ export default function App() {
         method: "eth_requestAccounts",
       })) as Address[];
 
+      window.localStorage.removeItem("arc-tip-jar-disconnected");
       setAccount(accounts[0] ?? null);
       const walletChainId = Number.parseInt(
         (await window.ethereum.request({ method: "eth_chainId" })) as string,
@@ -304,6 +344,7 @@ export default function App() {
       // Not every injected wallet supports permission revocation. The dApp can
       // still end its local session and reconnect explicitly when requested.
     } finally {
+      window.localStorage.setItem("arc-tip-jar-disconnected", "true");
       setAccount(null);
       setChainId(null);
       setTxHash(null);
@@ -530,8 +571,12 @@ export default function App() {
       <section className="stats-grid" aria-label="Tip jar statistics">
         <article className="stat-card claim-card">
           <span>Tips available to claim</span>
-          <strong>{isLoading ? "—" : formatUsdc(stats.balance)} USDC</strong>
-          <small>USDC currently held by the Tip Jar contract</small>
+          <strong>{account && !isLoading ? formatUsdc(stats.balance) : "—"} USDC</strong>
+          <small>
+            {account && claimableTipCount !== null
+              ? `${claimableTipCount} current tip${claimableTipCount === 1 ? "" : "s"} available`
+              : "Connect a wallet to view claimable tips"}
+          </small>
           {isOwner && (
             <button
               className="claim-button"
@@ -545,13 +590,12 @@ export default function App() {
         </article>
         <article className="stat-card">
           <span>Total tips received</span>
-          <strong>{isLoading ? "—" : formatUsdc(stats.totalReceived)} USDC</strong>
-          <small>All tips received, including claimed tips</small>
-        </article>
-        <article className="stat-card">
-          <span>Onchain tip count</span>
-          <strong>{isLoading ? "—" : stats.tipCount.toString()}</strong>
-          <small>Number of recorded tip transactions</small>
+          <strong>{account && !isLoading ? formatUsdc(stats.totalReceived) : "—"} USDC</strong>
+          <small>
+            {account && !isLoading
+              ? `${stats.tipCount.toString()} total onchain tip${stats.tipCount === 1n ? "" : "s"}`
+              : "Connect a wallet to view lifetime totals"}
+          </small>
         </article>
       </section>
 
@@ -662,7 +706,9 @@ export default function App() {
             </button>
           </div>
 
-          {isLoading ? (
+          {!account ? (
+            <p className="muted">Connect a wallet to view recent activity.</p>
+          ) : isLoading ? (
             <p className="muted">Loading onchain data…</p>
           ) : tips.length === 0 ? (
             <p className="muted">No tips yet. Be the first one.</p>
