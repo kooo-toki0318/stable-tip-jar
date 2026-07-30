@@ -72,6 +72,16 @@ function shortHash(hash: Hash): string {
   return `${hash.slice(0, 8)}…${hash.slice(-6)}`;
 }
 
+function CopyIcon({ copied }: { copied: boolean }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16">
+      <title>{copied ? "Copied" : "Copy transaction hash"}</title>
+      <rect x="8" y="8" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function formatUsdc(value: bigint): string {
   const numeric = Number(formatUnits(value, 18));
   return numeric.toLocaleString(undefined, {
@@ -114,7 +124,9 @@ export default function App() {
   const [message, setMessage] = useState("Thanks for building on Arc!");
   const [stats, setStats] = useState<JarStats>(emptyStats);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
-  const [tips, setTips] = useState<Tip[]>([]);
+  const [receivedTips, setReceivedTips] = useState<Tip[]>([]);
+  const [sentTips, setSentTips] = useState<Tip[]>([]);
+  const [sentTipCount, setSentTipCount] = useState(0);
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -179,6 +191,56 @@ export default function App() {
       setIsContractReady(true);
 
       try {
+        const visibleTipCount = tipCount > 8n ? 8n : tipCount;
+        const tipIndexes = Array.from(
+          { length: Number(visibleTipCount) },
+          (_, offset) => tipCount - 1n - BigInt(offset),
+        );
+
+        if (tipIndexes.length === 0) {
+          setReceivedTips([]);
+        } else {
+          const [tipResults, receivedLogs] = await Promise.all([
+            withRpcRetry(() =>
+              publicClient.multicall({
+                allowFailure: false,
+                contracts: tipIndexes.map((index) => ({
+                  ...contract,
+                  functionName: "getRecipientTip" as const,
+                  args: [recipientAddress, index] as const,
+                })),
+              }),
+            ),
+            withRpcRetry(() =>
+              publicClient.getContractEvents({
+                address: contractAddress,
+                abi: arcTipJarAbi,
+                eventName: "TipReceived",
+                args: { recipient: recipientAddress },
+                fromBlock: selectedNetwork.contractDeploymentBlock,
+                toBlock: "latest",
+                strict: true,
+              }),
+            ),
+          ]);
+          setReceivedTips(
+            tipResults.map(([sender, tipAmount, timestamp, tipMessage], offset): Tip => ({
+              index: tipIndexes[offset],
+              sender,
+              recipient: recipientAddress,
+              amount: tipAmount,
+              timestamp,
+              message: tipMessage,
+              txHash: receivedLogs[Number(tipIndexes[offset])]?.transactionHash ?? null,
+            })),
+          );
+        }
+      } catch (error) {
+        setReceivedTips([]);
+        setStatus(`Contract connected, but latest tips could not be loaded: ${getErrorMessage(error)}`);
+      }
+
+      try {
         const sentLogs = await withRpcRetry(() =>
           publicClient.getContractEvents({
             address: contractAddress,
@@ -190,6 +252,7 @@ export default function App() {
             strict: true,
           }),
         );
+        setSentTipCount(sentLogs.length);
         const latestSentLogs = sentLogs.slice(-8).reverse();
         const sentTipHistory: Tip[] = [];
         for (const log of latestSentLogs) {
@@ -207,9 +270,10 @@ export default function App() {
             txHash: log.transactionHash,
           });
         }
-        setTips(sentTipHistory);
+        setSentTips(sentTipHistory);
       } catch (error) {
-        setTips([]);
+        setSentTips([]);
+        setSentTipCount(0);
         setStatus(`Contract connected, but send history could not be loaded: ${getErrorMessage(error)}`);
       }
 
@@ -259,6 +323,9 @@ export default function App() {
       }
     } catch (error) {
       setIsContractReady(false);
+      setReceivedTips([]);
+      setSentTips([]);
+      setSentTipCount(0);
       setClaims([]);
       setStatus(`Could not load contract data: ${getErrorMessage(error)}`);
     } finally {
@@ -311,7 +378,9 @@ export default function App() {
     }
 
     setStats(emptyStats);
-    setTips([]);
+    setReceivedTips([]);
+    setSentTips([]);
+    setSentTipCount(0);
     setClaims([]);
     setIsContractReady(false);
     setIsLoading(false);
@@ -677,7 +746,7 @@ export default function App() {
           <strong>{account && !isLoading ? formatUsdc(stats.balance) : "—"} USDC</strong>
           <small className="tip-count-detail">
             {account && recipientAddress && !isLoading ? (
-              <><strong>{stats.claimableCount.toString()}</strong> current tip${stats.claimableCount === 1n ? "" : "s"}</>
+              <><strong>{stats.claimableCount.toString()}</strong> current tip{stats.claimableCount === 1n ? "" : "s"}</>
             ) : (
               "Connect a wallet and choose a recipient"
             )}
@@ -696,8 +765,8 @@ export default function App() {
           {claimTxHash && (
             <div className="operation-transaction compact">
               <span>{shortHash(claimTxHash)}</span>
-              <button type="button" onClick={() => void copyTransactionHash(claimTxHash)}>
-                {copiedHash === claimTxHash ? "Copied" : "Copy"}
+              <button className="copy-button" type="button" aria-label="Copy transaction hash" title={copiedHash === claimTxHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(claimTxHash)}>
+                <CopyIcon copied={copiedHash === claimTxHash} />
               </button>
               <a href={`${chain.blockExplorers?.default.url}/tx/${claimTxHash}`} target="_blank" rel="noreferrer">
                 ArcScan ↗
@@ -727,8 +796,8 @@ export default function App() {
                       {claim.txHash && (
                         <div className="history-transaction">
                           <span>{shortHash(claim.txHash)}</span>
-                          <button type="button" onClick={() => void copyTransactionHash(claim.txHash!)}>
-                            {copiedHash === claim.txHash ? "Copied" : "Copy"}
+                          <button className="copy-button" type="button" aria-label="Copy transaction hash" title={copiedHash === claim.txHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(claim.txHash!)}>
+                            <CopyIcon copied={copiedHash === claim.txHash} />
                           </button>
                           <a href={`${chain.blockExplorers?.default.url}/tx/${claim.txHash}`} target="_blank" rel="noreferrer">
                             ArcScan ↗
@@ -747,7 +816,7 @@ export default function App() {
           <strong>{account && !isLoading ? formatUsdc(stats.totalReceived) : "—"} USDC</strong>
           <small className="tip-count-detail">
             {account && recipientAddress && !isLoading ? (
-              <><strong>{stats.tipCount.toString()}</strong> lifetime tip${stats.tipCount === 1n ? "" : "s"}</>
+              <><strong>{stats.tipCount.toString()}</strong> lifetime tip{stats.tipCount === 1n ? "" : "s"}</>
             ) : (
               "Connect a wallet and choose a recipient"
             )}
@@ -884,8 +953,8 @@ export default function App() {
               {sendTxHash && (
                 <div className="operation-transaction">
                   <span>{shortHash(sendTxHash)}</span>
-                  <button type="button" onClick={() => void copyTransactionHash(sendTxHash)}>
-                    {copiedHash === sendTxHash ? "Copied" : "Copy"}
+                  <button className="copy-button" type="button" aria-label="Copy transaction hash" title={copiedHash === sendTxHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(sendTxHash)}>
+                    <CopyIcon copied={copiedHash === sendTxHash} />
                   </button>
                   <a href={`${chain.blockExplorers?.default.url}/tx/${sendTxHash}`} target="_blank" rel="noreferrer">
                     View on ArcScan ↗
@@ -906,13 +975,52 @@ export default function App() {
             </a>
           )}
           {status && <p className="status-message">{status}</p>}
+          {account && (
+            <details className="send-history-details">
+              <summary>
+                <span>Sent tip history</span>
+                <strong>{sentTipCount}</strong>
+              </summary>
+              {isLoading ? (
+                <p className="muted">Loading sent tips…</p>
+              ) : sentTips.length === 0 ? (
+                <p className="muted">No sent tips yet.</p>
+              ) : (
+                <ol className="tip-list compact-list">
+                  {sentTips.map((tip) => (
+                    <li key={tip.txHash ?? tip.index.toString()}>
+                      <div className="history-main">
+                        <strong>{formatUsdc(tip.amount)} USDC</strong>
+                        <time dateTime={new Date(Number(tip.timestamp) * 1000).toISOString()}>
+                          {new Date(Number(tip.timestamp) * 1000).toLocaleString()}
+                        </time>
+                      </div>
+                      <span className="tip-recipient">To {shortAddress(tip.recipient)}</span>
+                      {tip.message && <p>{tip.message}</p>}
+                      {tip.txHash && (
+                        <div className="history-transaction">
+                          <span>{shortHash(tip.txHash)}</span>
+                          <button className="copy-button" type="button" aria-label="Copy transaction hash" title={copiedHash === tip.txHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(tip.txHash!)}>
+                            <CopyIcon copied={copiedHash === tip.txHash} />
+                          </button>
+                          <a href={`${chain.blockExplorers?.default.url}/tx/${tip.txHash}`} target="_blank" rel="noreferrer">
+                            ArcScan ↗
+                          </a>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </details>
+          )}
         </article>
 
         <article className="panel recent-panel">
           <div className="panel-heading">
             <div>
-              <span className="section-label">SEND HISTORY</span>
-              <h2>Latest tips sent</h2>
+              <span className="section-label">RECENT ACTIVITY</span>
+              <h2>Latest tips</h2>
             </div>
             <button className="text-button" type="button" onClick={refreshData}>
               Refresh
@@ -925,17 +1033,16 @@ export default function App() {
             <p className="muted">Enter a recipient address to view jar data.</p>
           ) : isLoading ? (
             <p className="muted">Loading onchain data…</p>
-          ) : tips.length === 0 ? (
+          ) : receivedTips.length === 0 ? (
             <p className="muted">No tips yet. Be the first one.</p>
           ) : (
             <ol className="tip-list">
-              {tips.map((tip) => (
+              {receivedTips.map((tip) => (
                 <li key={tip.index.toString()}>
                   <div className="tip-main">
                     <strong>{formatUsdc(tip.amount)} USDC</strong>
                     <span>From {shortAddress(tip.sender)}</span>
                   </div>
-                  <span className="tip-recipient">To {shortAddress(tip.recipient)}</span>
                   <p>{tip.message || "Direct transfer"}</p>
                   <time dateTime={new Date(Number(tip.timestamp) * 1000).toISOString()}>
                     {new Date(Number(tip.timestamp) * 1000).toLocaleString()}
@@ -943,8 +1050,8 @@ export default function App() {
                   {tip.txHash && (
                     <div className="history-transaction">
                       <span>{shortHash(tip.txHash)}</span>
-                      <button type="button" onClick={() => void copyTransactionHash(tip.txHash!)}>
-                        {copiedHash === tip.txHash ? "Copied" : "Copy"}
+                      <button className="copy-button" type="button" aria-label="Copy transaction hash" title={copiedHash === tip.txHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(tip.txHash!)}>
+                        <CopyIcon copied={copiedHash === tip.txHash} />
                       </button>
                       <a href={`${chain.blockExplorers?.default.url}/tx/${tip.txHash}`} target="_blank" rel="noreferrer">
                         ArcScan ↗

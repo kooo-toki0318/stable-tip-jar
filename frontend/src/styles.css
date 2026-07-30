@@ -557,6 +557,33 @@ textarea:focus {
   font-weight: 800;
 }
 
+.copy-button {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 7px;
+}
+
+.copy-button:hover {
+  color: #06110c;
+  background: #8af9c1;
+}
+
+.copy-button svg {
+  display: block;
+}
+
+.tip-list.compact-list {
+  grid-template-columns: 1fr;
+  margin-top: 12px;
+}
+
+.tip-list.compact-list li {
+  padding: 12px;
+}
+
 .operation-transaction a,
 .history-transaction a {
   margin-left: auto;
@@ -565,12 +592,14 @@ textarea:focus {
   font-weight: 800;
 }
 
-.claim-history-details {
+.claim-history-details,
+.send-history-details {
   margin-top: 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
 }
 
-.claim-history-details summary {
+.claim-history-details summary,
+.send-history-details summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -583,27 +612,32 @@ textarea:focus {
   list-style: none;
 }
 
-.claim-history-details summary::-webkit-details-marker {
+.claim-history-details summary::-webkit-details-marker,
+.send-history-details summary::-webkit-details-marker {
   display: none;
 }
 
-.claim-history-details summary::after {
+.claim-history-details summary::after,
+.send-history-details summary::after {
   content: "+";
   color: #69f5ad;
   font-size: 1.1rem;
 }
 
-.claim-history-details[open] summary::after {
+.claim-history-details[open] summary::after,
+.send-history-details[open] summary::after {
   content: "−";
 }
 
-.claim-history-details summary strong {
+.claim-history-details summary strong,
+.send-history-details summary strong {
   margin: 0 0 0 auto;
   color: #9cf5c5;
   font-size: 0.85rem;
 }
 
-.claim-history-details > .muted {
+.claim-history-details > .muted,
+.send-history-details > .muted {
   margin: 14px 0 2px;
   font-size: 0.76rem;
 }
