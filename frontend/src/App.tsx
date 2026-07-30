@@ -60,6 +60,20 @@ function formatUsdc(value: bigint): string {
   });
 }
 
+async function withRpcRetry<T>(request: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await request();
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      const isRateLimited = message.includes("too many requests") || message.includes("429");
+      if (!isRateLimited || attempt === 2) throw error;
+      await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  throw new Error("RPC request failed after retries.");
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     if (error.message.includes("User rejected")) {
@@ -113,50 +127,20 @@ export default function App() {
   const refreshData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [rpcChainId, bytecode] = await Promise.all([
-        publicClient.getChainId(),
-        publicClient.getCode({ address: contractAddress }),
-      ]);
-
-      if (rpcChainId !== chain.id) {
-        throw new Error(
-          `RPC returned chain ID ${rpcChainId}; expected ${chain.id}.`,
-        );
-      }
-      if (!bytecode || bytecode === "0x") {
-        throw new Error(
-          `No contract is deployed at ${contractAddress} on ${chain.name}.`,
-        );
-      }
-
+      const contract = { address: contractAddress, abi: arcTipJarAbi } as const;
       const [balance, totalReceived, totalWithdrawn, tipCount, owner] =
-        await Promise.all([
-          publicClient.readContract({
-            address: contractAddress,
-            abi: arcTipJarAbi,
-            functionName: "jarBalance",
+        await withRpcRetry(() =>
+          publicClient.multicall({
+            allowFailure: false,
+            contracts: [
+              { ...contract, functionName: "jarBalance" },
+              { ...contract, functionName: "totalTipsReceived" },
+              { ...contract, functionName: "totalWithdrawn" },
+              { ...contract, functionName: "tipCount" },
+              { ...contract, functionName: "owner" },
+            ],
           }),
-          publicClient.readContract({
-            address: contractAddress,
-            abi: arcTipJarAbi,
-            functionName: "totalTipsReceived",
-          }),
-          publicClient.readContract({
-            address: contractAddress,
-            abi: arcTipJarAbi,
-            functionName: "totalWithdrawn",
-          }),
-          publicClient.readContract({
-            address: contractAddress,
-            abi: arcTipJarAbi,
-            functionName: "tipCount",
-          }),
-          publicClient.readContract({
-            address: contractAddress,
-            abi: arcTipJarAbi,
-            functionName: "owner",
-          }),
-        ]);
+        );
 
       setStats({ balance, totalReceived, totalWithdrawn, tipCount });
       setContractOwner(owner);
@@ -168,27 +152,35 @@ export default function App() {
         (_, offset) => tipCount - 1n - BigInt(offset),
       );
 
-      const recentTips = await Promise.all(
-        indexes.map(async (index): Promise<Tip> => {
-          const [sender, tipAmount, timestamp, tipMessage] =
-            await publicClient.readContract({
-              address: contractAddress,
-              abi: arcTipJarAbi,
-              functionName: "getTip",
-              args: [index],
-            });
+      try {
+        if (indexes.length === 0) {
+          setTips([]);
+        } else {
+          const tipResults = await withRpcRetry(() =>
+            publicClient.multicall({
+              allowFailure: false,
+              contracts: indexes.map((index) => ({
+                ...contract,
+                functionName: "getTip" as const,
+                args: [index] as const,
+              })),
+            }),
+          );
 
-          return {
-            index,
-            sender,
-            amount: tipAmount,
-            timestamp,
-            message: tipMessage,
-          };
-        }),
-      );
-
-      setTips(recentTips);
+          setTips(
+            tipResults.map(([sender, tipAmount, timestamp, tipMessage], offset): Tip => ({
+              index: indexes[offset],
+              sender,
+              amount: tipAmount,
+              timestamp,
+              message: tipMessage,
+            })),
+          );
+        }
+      } catch (error) {
+        setTips([]);
+        setStatus(`Contract connected, but recent tips could not be loaded: ${getErrorMessage(error)}`);
+      }
     } catch (error) {
       setIsContractReady(false);
       setContractOwner(null);
@@ -205,7 +197,7 @@ export default function App() {
     }
 
     try {
-      setWalletBalance(await publicClient.getBalance({ address: account }));
+      setWalletBalance(await withRpcRetry(() => publicClient.getBalance({ address: account })));
     } catch {
       setWalletBalance(null);
     }
@@ -557,11 +549,6 @@ export default function App() {
           <small>All tips received, including claimed tips</small>
         </article>
         <article className="stat-card">
-          <span>Connected wallet balance</span>
-          <strong>{account && walletBalance !== null ? formatUsdc(walletBalance) : "—"} USDC</strong>
-          <small>{account ? `On ${chain.name}` : "Connect a wallet to view its balance"}</small>
-        </article>
-        <article className="stat-card">
           <span>Onchain tip count</span>
           <strong>{isLoading ? "—" : stats.tipCount.toString()}</strong>
           <small>Number of recorded tip transactions</small>
@@ -578,6 +565,16 @@ export default function App() {
             <span className={`network-pill ${isCorrectNetwork ? "online" : ""}`}>
               {isCorrectNetwork ? `${chain.name} connected` : `${chain.name} required`}
             </span>
+          </div>
+
+          <div className="wallet-balance-row">
+            <span>Connected wallet balance</span>
+            <strong>
+              {account && walletBalance !== null
+                ? `${formatUsdc(walletBalance)} USDC`
+                : "—"}
+            </strong>
+            <small>{account ? `Available on ${chain.name} for tips and gas` : "Connect a wallet to view its balance"}</small>
           </div>
 
           {!account ? (

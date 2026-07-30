@@ -171,7 +171,7 @@ button:disabled {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
   margin-bottom: 14px;
 }
@@ -266,6 +266,28 @@ button:disabled {
   color: #9cf5c5;
   background: rgba(105, 245, 173, 0.1);
   border-color: rgba(105, 245, 173, 0.23);
+}
+
+.wallet-balance-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 18px;
+  margin: -10px 0 22px;
+  padding: 14px 16px;
+  color: #aebcb5;
+  background: rgba(105, 245, 173, 0.06);
+  border: 1px solid rgba(105, 245, 173, 0.16);
+  border-radius: 14px;
+  font-size: 0.8rem;
+}
+
+.wallet-balance-row strong {
+  color: #9cf5c5;
+}
+
+.wallet-balance-row small {
+  grid-column: 1 / -1;
+  color: #71847b;
 }
 
 label {
