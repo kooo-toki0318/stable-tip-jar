@@ -10,16 +10,18 @@ const ALLOWED_METHODS = new Set([
   "eth_getTransactionReceipt",
 ]);
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_REQUEST_BODY_BYTES = 1_048_576;
 
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 export async function onRequestPost({ request }) {
-  const body = await request.text();
-  if (body.length > 65_536) {
+  const bodyBytes = await request.arrayBuffer();
+  if (bodyBytes.byteLength > MAX_REQUEST_BODY_BYTES) {
     return Response.json({ error: "Request body is too large." }, { status: 413 });
   }
+  const body = new TextDecoder().decode(bodyBytes);
 
   let payload;
   try {
