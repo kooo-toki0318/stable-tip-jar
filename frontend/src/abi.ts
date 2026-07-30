@@ -1,0 +1,56 @@
+export const arcTipJarAbi = [
+  {
+    type: "function",
+    name: "tip",
+    stateMutability: "payable",
+    inputs: [{ name: "message", type: "string" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "tipCount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "getTip",
+    stateMutability: "view",
+    inputs: [{ name: "index", type: "uint256" }],
+    outputs: [
+      { name: "sender", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "timestamp", type: "uint256" },
+      { name: "message", type: "string" },
+    ],
+  },
+  {
+    type: "function",
+    name: "jarBalance",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "totalTipsReceived",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "totalWithdrawn",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "tipsByAddress",
+    stateMutability: "view",
+    inputs: [{ name: "sender", type: "address" }],
+    outputs: [{ name: "amount", type: "uint256" }],
+  },
+] as const;
