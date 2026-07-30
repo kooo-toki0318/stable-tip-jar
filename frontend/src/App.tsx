@@ -179,6 +179,31 @@ async function getBlockTimestamps(
   return timestamps;
 }
 
+const MAX_LOG_BLOCK_RANGE = 10_000n;
+
+async function getContractEventsInChunks<T>(
+  fromBlock: bigint,
+  toBlock: bigint,
+  getEvents: (chunkFromBlock: bigint, chunkToBlock: bigint) => Promise<readonly T[]>,
+): Promise<T[]> {
+  const events: T[] = [];
+  for (
+    let chunkFromBlock = fromBlock;
+    chunkFromBlock <= toBlock;
+    chunkFromBlock += MAX_LOG_BLOCK_RANGE
+  ) {
+    const chunkToBlock =
+      chunkFromBlock + MAX_LOG_BLOCK_RANGE - 1n < toBlock
+        ? chunkFromBlock + MAX_LOG_BLOCK_RANGE - 1n
+        : toBlock;
+    const chunkEvents = await withRpcRetry(() =>
+      getEvents(chunkFromBlock, chunkToBlock),
+    );
+    events.push(...chunkEvents);
+  }
+  return events;
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     if (error.message.includes("User rejected")) {
@@ -267,6 +292,12 @@ export default function App() {
       setStats({ balance, claimableCount, totalReceived, totalClaimed, tipCount, claimCount });
       setIsContractReady(true);
 
+      let historyToBlockPromise: Promise<bigint> | undefined;
+      const getHistoryToBlock = () => {
+        historyToBlockPromise ??= withRpcRetry(() => publicClient.getBlockNumber());
+        return historyToBlockPromise;
+      };
+
       try {
         const visibleTipCount = tipCount > 8n ? 8n : tipCount;
         const tipIndexes = Array.from(
@@ -277,6 +308,7 @@ export default function App() {
         if (tipIndexes.length === 0) {
           setReceivedTips([]);
         } else {
+          const historyToBlock = await getHistoryToBlock();
           const [tipResults, receivedLogs] = await Promise.all([
             withRpcRetry(() =>
               publicClient.multicall({
@@ -288,16 +320,19 @@ export default function App() {
                 })),
               }),
             ),
-            withRpcRetry(() =>
-              publicClient.getContractEvents({
-                address: contractAddress,
-                abi: arcTipJarAbi,
-                eventName: "TipReceived",
-                args: { recipient: recipientAddress },
-                fromBlock: selectedNetwork.contractDeploymentBlock,
-                toBlock: "latest",
-                strict: true,
-              }),
+            getContractEventsInChunks(
+              selectedNetwork.contractDeploymentBlock,
+              historyToBlock,
+              (fromBlock, toBlock) =>
+                publicClient.getContractEvents({
+                  address: contractAddress,
+                  abi: arcTipJarAbi,
+                  eventName: "TipReceived",
+                  args: { recipient: recipientAddress },
+                  fromBlock,
+                  toBlock,
+                  strict: true,
+                }),
             ),
           ]);
           setReceivedTips(
@@ -337,16 +372,20 @@ export default function App() {
               })),
             }),
           );
-          const claimLogs = await withRpcRetry(() =>
-            publicClient.getContractEvents({
-              address: contractAddress,
-              abi: arcTipJarAbi,
-              eventName: "Claimed",
-              args: { recipient: recipientAddress },
-              fromBlock: selectedNetwork.contractDeploymentBlock,
-              toBlock: "latest",
-              strict: true,
-            }),
+          const historyToBlock = await getHistoryToBlock();
+          const claimLogs = await getContractEventsInChunks(
+            selectedNetwork.contractDeploymentBlock,
+            historyToBlock,
+            (fromBlock, toBlock) =>
+              publicClient.getContractEvents({
+                address: contractAddress,
+                abi: arcTipJarAbi,
+                eventName: "Claimed",
+                args: { recipient: recipientAddress },
+                fromBlock,
+                toBlock,
+                strict: true,
+              }),
           );
           setClaims(
             claimResults.map(([amount, timestamp], offset): ClaimRecord => ({
@@ -394,16 +433,20 @@ export default function App() {
 
     setIsSentHistoryLoading(true);
     try {
-      const sentLogs = await withRpcRetry(() =>
-        publicClient.getContractEvents({
-          address: contractAddress,
-          abi: arcTipJarAbi,
-          eventName: "TipReceived",
-          args: { sender: account },
-          fromBlock: selectedNetwork.contractDeploymentBlock,
-          toBlock: "latest",
-          strict: true,
-        }),
+      const historyToBlock = await withRpcRetry(() => publicClient.getBlockNumber());
+      const sentLogs = await getContractEventsInChunks(
+        selectedNetwork.contractDeploymentBlock,
+        historyToBlock,
+        (fromBlock, toBlock) =>
+          publicClient.getContractEvents({
+            address: contractAddress,
+            abi: arcTipJarAbi,
+            eventName: "TipReceived",
+            args: { sender: account },
+            fromBlock,
+            toBlock,
+            strict: true,
+          }),
       );
       setSentTipCount(sentLogs.length);
       const latestSentLogs = sentLogs.slice(-8).reverse();
