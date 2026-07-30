@@ -89,18 +89,94 @@ function formatUsdc(value: bigint): string {
   });
 }
 
-async function withRpcRetry<T>(request: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+const RPC_MIN_INTERVAL_MS = 250;
+let rpcQueue: Promise<void> = Promise.resolve();
+let lastRpcRequestAt = 0;
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+}
+
+async function executeRpcWithRetry<T>(request: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const elapsed = Date.now() - lastRpcRequestAt;
+    if (elapsed < RPC_MIN_INTERVAL_MS) {
+      await wait(RPC_MIN_INTERVAL_MS - elapsed);
+    }
+    lastRpcRequestAt = Date.now();
+
     try {
       return await request();
     } catch (error) {
       const message = error instanceof Error ? error.message.toLowerCase() : "";
-      const isRateLimited = message.includes("too many requests") || message.includes("429");
-      if (!isRateLimited || attempt === 2) throw error;
-      await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+      const isTransient =
+        message.includes("too many requests") ||
+        message.includes("429") ||
+        message.includes("502") ||
+        message.includes("503") ||
+        message.includes("504") ||
+        message.includes("failed to fetch") ||
+        message.includes("network error");
+      if (!isTransient || attempt === 3) throw error;
+      await wait(750 * 2 ** attempt);
     }
   }
   throw new Error("RPC request failed after retries.");
+}
+
+async function withRpcRetry<T>(request: () => Promise<T>): Promise<T> {
+  const queuedRequest = rpcQueue.then(
+    () => executeRpcWithRetry(request),
+    () => executeRpcWithRetry(request),
+  );
+  rpcQueue = queuedRequest.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queuedRequest;
+}
+
+type JsonRpcBlockResponse = {
+  id: number;
+  result?: { timestamp: string };
+  error?: { message?: string };
+};
+
+async function getBlockTimestamps(
+  rpcUrl: string,
+  blockNumbers: readonly bigint[],
+): Promise<Map<bigint, bigint>> {
+  const uniqueBlockNumbers = [...new Set(blockNumbers.map(String))].map(BigInt);
+  if (uniqueBlockNumbers.length === 0) return new Map();
+
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(
+      uniqueBlockNumbers.map((blockNumber, index) => ({
+        jsonrpc: "2.0",
+        id: index + 1,
+        method: "eth_getBlockByNumber",
+        params: [toHex(blockNumber), false],
+      })),
+    ),
+  });
+  if (!response.ok) {
+    throw new Error(`RPC batch failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as JsonRpcBlockResponse[];
+  const timestamps = new Map<bigint, bigint>();
+  for (const item of payload) {
+    if (item.error) {
+      throw new Error(item.error.message ?? "RPC batch request failed.");
+    }
+    const blockNumber = uniqueBlockNumbers[item.id - 1];
+    if (blockNumber !== undefined && item.result?.timestamp) {
+      timestamps.set(blockNumber, BigInt(item.result.timestamp));
+    }
+  }
+  return timestamps;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -331,22 +407,28 @@ export default function App() {
       );
       setSentTipCount(sentLogs.length);
       const latestSentLogs = sentLogs.slice(-8).reverse();
-      const sentTipHistory: Tip[] = [];
-      for (const log of latestSentLogs) {
-        if (!log.blockNumber || !log.transactionHash) continue;
-        const block = await withRpcRetry(() =>
-          publicClient.getBlock({ blockNumber: log.blockNumber! }),
-        );
-        sentTipHistory.push({
+      const blockTimestamps = await withRpcRetry(() =>
+        getBlockTimestamps(
+          selectedNetwork.browserRpcUrl,
+          latestSentLogs.flatMap((log) =>
+            log.blockNumber === null ? [] : [log.blockNumber],
+          ),
+        ),
+      );
+      const sentTipHistory = latestSentLogs.flatMap((log): Tip[] => {
+        if (log.blockNumber === null || !log.transactionHash) return [];
+        const timestamp = blockTimestamps.get(log.blockNumber);
+        if (timestamp === undefined) return [];
+        return [{
           index: BigInt(log.logIndex ?? 0),
           sender: log.args.sender,
           recipient: log.args.recipient,
           amount: log.args.amount,
-          timestamp: block.timestamp,
+          timestamp,
           message: log.args.message,
           txHash: log.transactionHash,
-        });
-      }
+        }];
+      });
       setSentTips(sentTipHistory);
     } catch (error) {
       setSentTips([]);
@@ -355,7 +437,13 @@ export default function App() {
     } finally {
       setIsSentHistoryLoading(false);
     }
-  }, [account, contractAddress, publicClient, selectedNetwork.contractDeploymentBlock]);
+  }, [
+    account,
+    contractAddress,
+    publicClient,
+    selectedNetwork.browserRpcUrl,
+    selectedNetwork.contractDeploymentBlock,
+  ]);
 
   const syncWalletState = useCallback(async () => {
     if (!window.ethereum) return;
