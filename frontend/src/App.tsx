@@ -89,7 +89,7 @@ function formatUsdc(value: bigint): string {
   });
 }
 
-const RPC_MIN_INTERVAL_MS = 250;
+const RPC_MIN_INTERVAL_MS = 600;
 let rpcQueue: Promise<void> = Promise.resolve();
 let lastRpcRequestAt = 0;
 
@@ -111,6 +111,10 @@ async function executeRpcWithRetry<T>(request: () => Promise<T>): Promise<T> {
       const message = error instanceof Error ? error.message.toLowerCase() : "";
       const isTransient =
         message.includes("too many requests") ||
+        message.includes("rate limit exceeded") ||
+        message.includes("request limit reached") ||
+        message.includes("-32005") ||
+        message.includes("-32011") ||
         message.includes("429") ||
         message.includes("502") ||
         message.includes("503") ||
@@ -118,7 +122,7 @@ async function executeRpcWithRetry<T>(request: () => Promise<T>): Promise<T> {
         message.includes("failed to fetch") ||
         message.includes("network error");
       if (!isTransient || attempt === 3) throw error;
-      await wait(750 * 2 ** attempt);
+      await wait(1_000 * 2 ** attempt);
     }
   }
   throw new Error("RPC request failed after retries.");
@@ -134,49 +138,6 @@ async function withRpcRetry<T>(request: () => Promise<T>): Promise<T> {
     () => undefined,
   );
   return queuedRequest;
-}
-
-type JsonRpcBlockResponse = {
-  id: number;
-  result?: { timestamp: string };
-  error?: { message?: string };
-};
-
-async function getBlockTimestamps(
-  rpcUrl: string,
-  blockNumbers: readonly bigint[],
-): Promise<Map<bigint, bigint>> {
-  const uniqueBlockNumbers = [...new Set(blockNumbers.map(String))].map(BigInt);
-  if (uniqueBlockNumbers.length === 0) return new Map();
-
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(
-      uniqueBlockNumbers.map((blockNumber, index) => ({
-        jsonrpc: "2.0",
-        id: index + 1,
-        method: "eth_getBlockByNumber",
-        params: [toHex(blockNumber), false],
-      })),
-    ),
-  });
-  if (!response.ok) {
-    throw new Error(`RPC batch failed with status ${response.status}.`);
-  }
-
-  const payload = (await response.json()) as JsonRpcBlockResponse[];
-  const timestamps = new Map<bigint, bigint>();
-  for (const item of payload) {
-    if (item.error) {
-      throw new Error(item.error.message ?? "RPC batch request failed.");
-    }
-    const blockNumber = uniqueBlockNumbers[item.id - 1];
-    if (blockNumber !== undefined && item.result?.timestamp) {
-      timestamps.set(blockNumber, BigInt(item.result.timestamp));
-    }
-  }
-  return timestamps;
 }
 
 const MAX_LOG_BLOCK_RANGE = 10_000n;
@@ -202,6 +163,26 @@ async function getContractEventsInChunks<T>(
     events.push(...chunkEvents);
   }
   return events;
+}
+
+function createCachedLoader<T>(load: () => Promise<T>) {
+  let cachedRequest: Promise<T> | null = null;
+
+  return {
+    load() {
+      if (!cachedRequest) {
+        const request = load().catch((error) => {
+          if (cachedRequest === request) cachedRequest = null;
+          throw error;
+        });
+        cachedRequest = request;
+      }
+      return cachedRequest;
+    },
+    invalidate() {
+      cachedRequest = null;
+    },
+  };
 }
 
 function getErrorMessage(error: unknown): string {
@@ -251,6 +232,25 @@ export default function App() {
       }),
     [chain, selectedNetwork.browserRpcUrl],
   );
+  const contractEventLoader = useMemo(
+    () =>
+      createCachedLoader(async () => {
+        const historyToBlock = await withRpcRetry(() => publicClient.getBlockNumber());
+        return getContractEventsInChunks(
+          selectedNetwork.contractDeploymentBlock,
+          historyToBlock,
+          (fromBlock, toBlock) =>
+            publicClient.getContractEvents({
+              address: contractAddress,
+              abi: arcTipJarAbi,
+              fromBlock,
+              toBlock,
+              strict: true,
+            }),
+        );
+      }),
+    [contractAddress, publicClient, selectedNetwork.contractDeploymentBlock],
+  );
   const isCorrectNetwork = chainId === chain.id;
   const gasReserve = parseUnits("0.01", 18);
   const spendableBalance =
@@ -292,12 +292,6 @@ export default function App() {
       setStats({ balance, claimableCount, totalReceived, totalClaimed, tipCount, claimCount });
       setIsContractReady(true);
 
-      let historyToBlockPromise: Promise<bigint> | undefined;
-      const getHistoryToBlock = () => {
-        historyToBlockPromise ??= withRpcRetry(() => publicClient.getBlockNumber());
-        return historyToBlockPromise;
-      };
-
       try {
         const visibleTipCount = tipCount > 8n ? 8n : tipCount;
         const tipIndexes = Array.from(
@@ -308,8 +302,7 @@ export default function App() {
         if (tipIndexes.length === 0) {
           setReceivedTips([]);
         } else {
-          const historyToBlock = await getHistoryToBlock();
-          const [tipResults, receivedLogs] = await Promise.all([
+          const [tipResults, contractEvents] = await Promise.all([
             withRpcRetry(() =>
               publicClient.multicall({
                 allowFailure: false,
@@ -320,21 +313,13 @@ export default function App() {
                 })),
               }),
             ),
-            getContractEventsInChunks(
-              selectedNetwork.contractDeploymentBlock,
-              historyToBlock,
-              (fromBlock, toBlock) =>
-                publicClient.getContractEvents({
-                  address: contractAddress,
-                  abi: arcTipJarAbi,
-                  eventName: "TipReceived",
-                  args: { recipient: recipientAddress },
-                  fromBlock,
-                  toBlock,
-                  strict: true,
-                }),
-            ),
+            contractEventLoader.load(),
           ]);
+          const receivedLogs = contractEvents.filter(
+            (log) =>
+              log.eventName === "TipReceived" &&
+              log.args.recipient.toLowerCase() === recipientAddress.toLowerCase(),
+          );
           setReceivedTips(
             tipResults.map(([sender, tipAmount, timestamp, tipMessage], offset): Tip => ({
               index: tipIndexes[offset],
@@ -372,20 +357,10 @@ export default function App() {
               })),
             }),
           );
-          const historyToBlock = await getHistoryToBlock();
-          const claimLogs = await getContractEventsInChunks(
-            selectedNetwork.contractDeploymentBlock,
-            historyToBlock,
-            (fromBlock, toBlock) =>
-              publicClient.getContractEvents({
-                address: contractAddress,
-                abi: arcTipJarAbi,
-                eventName: "Claimed",
-                args: { recipient: recipientAddress },
-                fromBlock,
-                toBlock,
-                strict: true,
-              }),
+          const claimLogs = (await contractEventLoader.load()).filter(
+            (log) =>
+              log.eventName === "Claimed" &&
+              log.args.recipient.toLowerCase() === recipientAddress.toLowerCase(),
           );
           setClaims(
             claimResults.map(([amount, timestamp], offset): ClaimRecord => ({
@@ -408,7 +383,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [account, contractAddress, publicClient, recipientAddress, selectedNetwork.contractDeploymentBlock]);
+  }, [account, contractAddress, contractEventLoader, publicClient, recipientAddress]);
 
   const refreshWalletBalance = useCallback(async () => {
     if (!account) {
@@ -433,41 +408,26 @@ export default function App() {
 
     setIsSentHistoryLoading(true);
     try {
-      const historyToBlock = await withRpcRetry(() => publicClient.getBlockNumber());
-      const sentLogs = await getContractEventsInChunks(
-        selectedNetwork.contractDeploymentBlock,
-        historyToBlock,
-        (fromBlock, toBlock) =>
-          publicClient.getContractEvents({
-            address: contractAddress,
-            abi: arcTipJarAbi,
-            eventName: "TipReceived",
-            args: { sender: account },
-            fromBlock,
-            toBlock,
-            strict: true,
-          }),
+      const sentLogs = (await contractEventLoader.load()).filter(
+        (log) =>
+          log.eventName === "TipReceived" &&
+          log.args.sender.toLowerCase() === account.toLowerCase(),
       );
       setSentTipCount(sentLogs.length);
       const latestSentLogs = sentLogs.slice(-8).reverse();
-      const blockTimestamps = await withRpcRetry(() =>
-        getBlockTimestamps(
-          selectedNetwork.browserRpcUrl,
-          latestSentLogs.flatMap((log) =>
-            log.blockNumber === null ? [] : [log.blockNumber],
-          ),
-        ),
-      );
       const sentTipHistory = latestSentLogs.flatMap((log): Tip[] => {
-        if (log.blockNumber === null || !log.transactionHash) return [];
-        const timestamp = blockTimestamps.get(log.blockNumber);
-        if (timestamp === undefined) return [];
+        if (
+          log.eventName !== "TipReceived" ||
+          log.blockTimestamp === null ||
+          log.blockTimestamp === undefined ||
+          !log.transactionHash
+        ) return [];
         return [{
           index: BigInt(log.logIndex ?? 0),
           sender: log.args.sender,
           recipient: log.args.recipient,
           amount: log.args.amount,
-          timestamp,
+          timestamp: log.blockTimestamp,
           message: log.args.message,
           txHash: log.transactionHash,
         }];
@@ -480,13 +440,7 @@ export default function App() {
     } finally {
       setIsSentHistoryLoading(false);
     }
-  }, [
-    account,
-    contractAddress,
-    publicClient,
-    selectedNetwork.browserRpcUrl,
-    selectedNetwork.contractDeploymentBlock,
-  ]);
+  }, [account, contractEventLoader]);
 
   const syncWalletState = useCallback(async () => {
     if (!window.ethereum) return;
@@ -779,6 +733,7 @@ export default function App() {
       setAmount("0.01");
       setAmountPercentage(0);
       setMessage("");
+      contractEventLoader.invalidate();
       await Promise.all([refreshData(), refreshWalletBalance(), refreshSentHistory()]);
     } catch (error) {
       setStatus(getErrorMessage(error));
@@ -821,6 +776,7 @@ export default function App() {
       setClaimStatus("Claim submitted. Waiting for confirmation…");
       await publicClient.waitForTransactionReceipt({ hash });
       setClaimStatus(`Claim confirmed on ${chain.name}.`);
+      contractEventLoader.invalidate();
       await Promise.all([refreshData(), refreshWalletBalance()]);
     } catch (error) {
       setClaimStatus(getErrorMessage(error));

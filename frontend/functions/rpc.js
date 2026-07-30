@@ -10,10 +10,31 @@ const ALLOWED_METHODS = new Set([
   "eth_getTransactionReceipt",
 ]);
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const RETRYABLE_RPC_ERROR_CODES = new Set([-32005, -32011]);
 const MAX_REQUEST_BODY_BYTES = 1_048_576;
+const MAX_UPSTREAM_ATTEMPTS = 4;
 
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function hasRetryableRpcError(responseBody) {
+  try {
+    const payload = JSON.parse(responseBody);
+    const responses = Array.isArray(payload) ? payload : [payload];
+    return responses.some((item) => {
+      const code = Number(item?.error?.code);
+      const message = String(item?.error?.message ?? "").toLowerCase();
+      return (
+        RETRYABLE_RPC_ERROR_CODES.has(code) ||
+        message.includes("rate limit exceeded") ||
+        message.includes("request limit reached") ||
+        message.includes("too many requests")
+      );
+    });
+  } catch {
+    return false;
+  }
 }
 
 export async function onRequestPost({ request }) {
@@ -38,36 +59,45 @@ export async function onRequestPost({ request }) {
     return Response.json({ error: "Unsupported RPC method." }, { status: 403 });
   }
 
-  let upstream;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  let finalResponse = null;
+  for (let attempt = 0; attempt < MAX_UPSTREAM_ATTEMPTS; attempt += 1) {
+    let retryDelay = 750 * 2 ** attempt;
     try {
-      upstream = await fetch(ARC_TESTNET_RPC_URL, {
+      const upstream = await fetch(ARC_TESTNET_RPC_URL, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body,
       });
-      if (!RETRYABLE_STATUSES.has(upstream.status) || attempt === 3) break;
-      await upstream.body?.cancel();
-    } catch (error) {
-      if (attempt === 3) throw error;
-    }
+      const responseBody = await upstream.text();
+      finalResponse = {
+        body: responseBody,
+        status: upstream.status,
+        contentType: upstream.headers.get("content-type") ?? "application/json",
+      };
 
-    const retryAfterSeconds = Number(upstream?.headers.get("retry-after"));
-    const retryDelay =
-      Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-        ? retryAfterSeconds * 1_000
-        : 300 * 2 ** attempt;
+      const shouldRetry =
+        RETRYABLE_STATUSES.has(upstream.status) ||
+        hasRetryableRpcError(responseBody);
+      if (!shouldRetry || attempt === MAX_UPSTREAM_ATTEMPTS - 1) break;
+
+      const retryAfterSeconds = Number(upstream.headers.get("retry-after"));
+      if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+        retryDelay = retryAfterSeconds * 1_000;
+      }
+    } catch {
+      if (attempt === MAX_UPSTREAM_ATTEMPTS - 1) break;
+    }
     await wait(retryDelay);
   }
 
-  if (!upstream) {
+  if (!finalResponse) {
     return Response.json({ error: "RPC provider is unavailable." }, { status: 502 });
   }
 
-  return new Response(upstream.body, {
-    status: upstream.status,
+  return new Response(finalResponse.body, {
+    status: finalResponse.status,
     headers: {
-      "content-type": upstream.headers.get("content-type") ?? "application/json",
+      "content-type": finalResponse.contentType,
       "cache-control": "no-store",
     },
   });
