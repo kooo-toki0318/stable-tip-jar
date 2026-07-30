@@ -32,15 +32,18 @@ declare global {
 type Tip = {
   index: bigint;
   sender: Address;
+  recipient: Address;
   amount: bigint;
   timestamp: bigint;
   message: string;
+  txHash: Hash | null;
 };
 
 type ClaimRecord = {
   index: bigint;
   amount: bigint;
   timestamp: bigint;
+  txHash: Hash | null;
 };
 
 type JarStats = {
@@ -63,6 +66,10 @@ const emptyStats: JarStats = {
 
 function shortAddress(address: Address): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+function shortHash(hash: Hash): string {
+  return `${hash.slice(0, 8)}…${hash.slice(-6)}`;
 }
 
 function formatUsdc(value: bigint): string {
@@ -115,7 +122,10 @@ export default function App() {
   const [isClaiming, setIsClaiming] = useState(false);
   const [isContractReady, setIsContractReady] = useState(false);
   const [status, setStatus] = useState<string>("");
-  const [txHash, setTxHash] = useState<Hash | null>(null);
+  const [claimStatus, setClaimStatus] = useState<string>("");
+  const [sendTxHash, setSendTxHash] = useState<Hash | null>(null);
+  const [claimTxHash, setClaimTxHash] = useState<Hash | null>(null);
+  const [copiedHash, setCopiedHash] = useState<Hash | null>(null);
 
   const selectedNetwork = arcNetworks[selectedNetworkKey] ?? arcNetworks.testnet!;
   const { chain, contractAddress } = selectedNetwork;
@@ -168,41 +178,39 @@ export default function App() {
       setStats({ balance, claimableCount, totalReceived, totalClaimed, tipCount, claimCount });
       setIsContractReady(true);
 
-      const readableCount = tipCount > 100n ? 100n : tipCount;
-      const indexes = Array.from(
-        { length: Number(readableCount) },
-        (_, offset) => tipCount - 1n - BigInt(offset),
-      );
-
       try {
-        if (indexes.length === 0) {
-          setTips([]);
-        } else {
-          const tipResults = await withRpcRetry(() =>
-            publicClient.multicall({
-              allowFailure: false,
-              contracts: indexes.map((index) => ({
-                ...contract,
-                functionName: "getRecipientTip" as const,
-                args: [recipientAddress, index] as const,
-              })),
-            }),
+        const sentLogs = await withRpcRetry(() =>
+          publicClient.getContractEvents({
+            address: contractAddress,
+            abi: arcTipJarAbi,
+            eventName: "TipReceived",
+            args: { sender: account },
+            fromBlock: selectedNetwork.contractDeploymentBlock,
+            toBlock: "latest",
+            strict: true,
+          }),
+        );
+        const latestSentLogs = sentLogs.slice(-8).reverse();
+        const sentTipHistory: Tip[] = [];
+        for (const log of latestSentLogs) {
+          if (!log.blockNumber || !log.transactionHash) continue;
+          const block = await withRpcRetry(() =>
+            publicClient.getBlock({ blockNumber: log.blockNumber! }),
           );
-
-          const loadedTips = tipResults.map(
-            ([sender, tipAmount, timestamp, tipMessage], offset): Tip => ({
-              index: indexes[offset],
-              sender,
-              amount: tipAmount,
-              timestamp,
-              message: tipMessage,
-            }),
-          );
-          setTips(loadedTips.slice(0, 8));
+          sentTipHistory.push({
+            index: BigInt(log.logIndex ?? 0),
+            sender: log.args.sender,
+            recipient: log.args.recipient,
+            amount: log.args.amount,
+            timestamp: block.timestamp,
+            message: log.args.message,
+            txHash: log.transactionHash,
+          });
         }
+        setTips(sentTipHistory);
       } catch (error) {
         setTips([]);
-        setStatus(`Contract connected, but recent tips could not be loaded: ${getErrorMessage(error)}`);
+        setStatus(`Contract connected, but send history could not be loaded: ${getErrorMessage(error)}`);
       }
 
       try {
@@ -225,11 +233,23 @@ export default function App() {
               })),
             }),
           );
+          const claimLogs = await withRpcRetry(() =>
+            publicClient.getContractEvents({
+              address: contractAddress,
+              abi: arcTipJarAbi,
+              eventName: "Claimed",
+              args: { recipient: recipientAddress },
+              fromBlock: selectedNetwork.contractDeploymentBlock,
+              toBlock: "latest",
+              strict: true,
+            }),
+          );
           setClaims(
             claimResults.map(([amount, timestamp], offset): ClaimRecord => ({
               index: claimIndexes[offset],
               amount,
               timestamp,
+              txHash: claimLogs[Number(claimIndexes[offset])]?.transactionHash ?? null,
             })),
           );
         }
@@ -244,7 +264,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [account, contractAddress, publicClient, recipientAddress]);
+  }, [account, contractAddress, publicClient, recipientAddress, selectedNetwork.contractDeploymentBlock]);
 
   const refreshWalletBalance = useCallback(async () => {
     if (!account) {
@@ -391,7 +411,8 @@ export default function App() {
       setAccount(null);
       setChainId(null);
       setRecipientInput("");
-      setTxHash(null);
+      setSendTxHash(null);
+    setClaimTxHash(null);
       setStatus("Wallet disconnected from this dApp.");
     }
   }
@@ -438,7 +459,8 @@ export default function App() {
 
     setSelectedNetworkKey(nextKey);
     setStatus("");
-    setTxHash(null);
+    setSendTxHash(null);
+    setClaimTxHash(null);
     if (account && chainId !== nextNetwork.chain.id) {
       try {
         await switchToNetwork(nextNetwork);
@@ -475,10 +497,16 @@ export default function App() {
     setStatus("");
   }
 
+  async function copyTransactionHash(hash: Hash) {
+    await navigator.clipboard.writeText(hash);
+    setCopiedHash(hash);
+    window.setTimeout(() => setCopiedHash((current) => (current === hash ? null : current)), 1500);
+  }
+
   async function sendTip(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("");
-    setTxHash(null);
+    setSendTxHash(null);
 
     if (!window.ethereum || !account) {
       setStatus("Connect your wallet first.");
@@ -528,7 +556,7 @@ export default function App() {
         value,
       });
 
-      setTxHash(hash);
+      setSendTxHash(hash);
       setStatus("Transaction submitted. Waiting for confirmation…");
 
       await publicClient.waitForTransactionReceipt({ hash });
@@ -545,19 +573,19 @@ export default function App() {
   }
 
   async function claimTips() {
-    setStatus("");
-    setTxHash(null);
+    setClaimStatus("");
+    setClaimTxHash(null);
 
     if (!window.ethereum || !account || !canClaim) {
-      setStatus("Connect the recipient wallet to claim its collected tips.");
+      setClaimStatus("Connect the recipient wallet to claim its collected tips.");
       return;
     }
     if (!isCorrectNetwork) {
-      setStatus(`Switch to ${chain.name} before claiming tips.`);
+      setClaimStatus(`Switch to ${chain.name} before claiming tips.`);
       return;
     }
     if (stats.balance === 0n) {
-      setStatus("There are no tips available to claim.");
+      setClaimStatus("There are no tips available to claim.");
       return;
     }
 
@@ -574,13 +602,13 @@ export default function App() {
         functionName: "claim",
       });
 
-      setTxHash(hash);
-      setStatus("Claim submitted. Waiting for confirmation…");
+      setClaimTxHash(hash);
+      setClaimStatus("Claim submitted. Waiting for confirmation…");
       await publicClient.waitForTransactionReceipt({ hash });
-      setStatus(`Claim confirmed on ${chain.name}.`);
+      setClaimStatus(`Claim confirmed on ${chain.name}.`);
       await Promise.all([refreshData(), refreshWalletBalance()]);
     } catch (error) {
-      setStatus(getErrorMessage(error));
+      setClaimStatus(getErrorMessage(error));
     } finally {
       setIsClaiming(false);
     }
@@ -649,7 +677,7 @@ export default function App() {
           <strong>{account && !isLoading ? formatUsdc(stats.balance) : "—"} USDC</strong>
           <small className="tip-count-detail">
             {account && recipientAddress && !isLoading ? (
-              <><strong>${stats.claimableCount.toString()}</strong> current tip${stats.claimableCount === 1n ? "" : "s"}</>
+              <><strong>{stats.claimableCount.toString()}</strong> current tip${stats.claimableCount === 1n ? "" : "s"}</>
             ) : (
               "Connect a wallet and choose a recipient"
             )}
@@ -664,13 +692,62 @@ export default function App() {
               {isClaiming ? "Claiming…" : "Claim all tips"}
             </button>
           )}
+          {claimStatus && <p className="claim-status">{claimStatus}</p>}
+          {claimTxHash && (
+            <div className="operation-transaction compact">
+              <span>{shortHash(claimTxHash)}</span>
+              <button type="button" onClick={() => void copyTransactionHash(claimTxHash)}>
+                {copiedHash === claimTxHash ? "Copied" : "Copy"}
+              </button>
+              <a href={`${chain.blockExplorers?.default.url}/tx/${claimTxHash}`} target="_blank" rel="noreferrer">
+                ArcScan ↗
+              </a>
+            </div>
+          )}
+          {account && recipientAddress && (
+            <details className="claim-history-details">
+              <summary>
+                <span>Claim history</span>
+                <strong>{stats.claimCount.toString()}</strong>
+              </summary>
+              {isLoading ? (
+                <p className="muted">Loading claim history…</p>
+              ) : claims.length === 0 ? (
+                <p className="muted">No claims yet.</p>
+              ) : (
+                <ol className="claim-list compact-list">
+                  {claims.map((claim) => (
+                    <li key={claim.index.toString()}>
+                      <div className="history-main">
+                        <strong>{formatUsdc(claim.amount)} USDC</strong>
+                        <time dateTime={new Date(Number(claim.timestamp) * 1000).toISOString()}>
+                          {new Date(Number(claim.timestamp) * 1000).toLocaleString()}
+                        </time>
+                      </div>
+                      {claim.txHash && (
+                        <div className="history-transaction">
+                          <span>{shortHash(claim.txHash)}</span>
+                          <button type="button" onClick={() => void copyTransactionHash(claim.txHash!)}>
+                            {copiedHash === claim.txHash ? "Copied" : "Copy"}
+                          </button>
+                          <a href={`${chain.blockExplorers?.default.url}/tx/${claim.txHash}`} target="_blank" rel="noreferrer">
+                            ArcScan ↗
+                          </a>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </details>
+          )}
         </article>
         <article className="stat-card">
           <span>Total tips received</span>
           <strong>{account && !isLoading ? formatUsdc(stats.totalReceived) : "—"} USDC</strong>
           <small className="tip-count-detail">
             {account && recipientAddress && !isLoading ? (
-              <><strong>${stats.tipCount.toString()}</strong> lifetime tip${stats.tipCount === 1n ? "" : "s"}</>
+              <><strong>{stats.tipCount.toString()}</strong> lifetime tip${stats.tipCount === 1n ? "" : "s"}</>
             ) : (
               "Connect a wallet and choose a recipient"
             )}
@@ -716,29 +793,6 @@ export default function App() {
             </div>
           ) : (
             <form onSubmit={sendTip}>
-              <div className="field-heading">
-                <label htmlFor="recipient">Recipient wallet</label>
-                <button
-                  className="inline-action"
-                  type="button"
-                  onClick={useConnectedWalletAsRecipient}
-                >
-                  Use my address
-                </button>
-              </div>
-              <input
-                className={`address-input ${recipientInput && !recipientAddress ? "invalid" : ""}`}
-                id="recipient"
-                value={recipientInput}
-                onChange={(event) => setRecipientInput(event.target.value.trim())}
-                placeholder="0x…"
-                spellCheck={false}
-                required
-              />
-              {recipientInput && !recipientAddress && (
-                <p className="field-error">Enter a valid EVM wallet address.</p>
-              )}
-
               <label htmlFor="amount">Amount</label>
               <div className="amount-input">
                 <input
@@ -762,7 +816,7 @@ export default function App() {
                     type="button"
                     onClick={() => setPresetAmount(preset)}
                   >
-                    ${preset} USDC
+                    {preset} USDC
                   </button>
                 ))}
               </div>
@@ -770,7 +824,7 @@ export default function App() {
               <div className="percentage-control">
                 <div>
                   <span>Spendable balance percentage</span>
-                  <strong>${amountPercentage.toFixed(amountPercentage % 1 === 0 ? 0 : 2)}%</strong>
+                  <strong>{amountPercentage.toFixed(amountPercentage % 1 === 0 ? 0 : 2)}%</strong>
                 </div>
                 <input
                   aria-label="Wallet balance percentage"
@@ -797,6 +851,29 @@ export default function App() {
                 {messageBytes} / 280 bytes
               </div>
 
+              <div className="field-heading">
+                <label htmlFor="recipient">Recipient wallet</label>
+                <button
+                  className="inline-action"
+                  type="button"
+                  onClick={useConnectedWalletAsRecipient}
+                >
+                  Use my address
+                </button>
+              </div>
+              <input
+                className={`address-input ${recipientInput && !recipientAddress ? "invalid" : ""}`}
+                id="recipient"
+                value={recipientInput}
+                onChange={(event) => setRecipientInput(event.target.value.trim())}
+                placeholder="0x…"
+                spellCheck={false}
+                required
+              />
+              {recipientInput && !recipientAddress && (
+                <p className="field-error">Enter a valid EVM wallet address.</p>
+              )}
+
               <button
                 className="primary-button"
                 type="submit"
@@ -804,6 +881,17 @@ export default function App() {
               >
                 {isSending ? "Sending…" : "Send tip"}
               </button>
+              {sendTxHash && (
+                <div className="operation-transaction">
+                  <span>{shortHash(sendTxHash)}</span>
+                  <button type="button" onClick={() => void copyTransactionHash(sendTxHash)}>
+                    {copiedHash === sendTxHash ? "Copied" : "Copy"}
+                  </button>
+                  <a href={`${chain.blockExplorers?.default.url}/tx/${sendTxHash}`} target="_blank" rel="noreferrer">
+                    View on ArcScan ↗
+                  </a>
+                </div>
+              )}
             </form>
           )}
 
@@ -818,23 +906,13 @@ export default function App() {
             </a>
           )}
           {status && <p className="status-message">{status}</p>}
-          {txHash && (
-            <a
-              className="transaction-link"
-              href={`${chain.blockExplorers?.default.url}/tx/${txHash}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View transaction on ArcScan ↗
-            </a>
-          )}
         </article>
 
         <article className="panel recent-panel">
           <div className="panel-heading">
             <div>
-              <span className="section-label">RECENT ACTIVITY</span>
-              <h2>Latest tips</h2>
+              <span className="section-label">SEND HISTORY</span>
+              <h2>Latest tips sent</h2>
             </div>
             <button className="text-button" type="button" onClick={refreshData}>
               Refresh
@@ -844,7 +922,7 @@ export default function App() {
           {!account ? (
             <p className="muted">Connect a wallet to view recent activity.</p>
           ) : !recipientAddress ? (
-            <p className="muted">Enter a recipient address to view their activity.</p>
+            <p className="muted">Enter a recipient address to view jar data.</p>
           ) : isLoading ? (
             <p className="muted">Loading onchain data…</p>
           ) : tips.length === 0 ? (
@@ -855,53 +933,29 @@ export default function App() {
                 <li key={tip.index.toString()}>
                   <div className="tip-main">
                     <strong>{formatUsdc(tip.amount)} USDC</strong>
-                    <span>{shortAddress(tip.sender)}</span>
+                    <span>From {shortAddress(tip.sender)}</span>
                   </div>
+                  <span className="tip-recipient">To {shortAddress(tip.recipient)}</span>
                   <p>{tip.message || "Direct transfer"}</p>
                   <time dateTime={new Date(Number(tip.timestamp) * 1000).toISOString()}>
                     {new Date(Number(tip.timestamp) * 1000).toLocaleString()}
                   </time>
+                  {tip.txHash && (
+                    <div className="history-transaction">
+                      <span>{shortHash(tip.txHash)}</span>
+                      <button type="button" onClick={() => void copyTransactionHash(tip.txHash!)}>
+                        {copiedHash === tip.txHash ? "Copied" : "Copy"}
+                      </button>
+                      <a href={`${chain.blockExplorers?.default.url}/tx/${tip.txHash}`} target="_blank" rel="noreferrer">
+                        ArcScan ↗
+                      </a>
+                    </div>
+                  )}
                 </li>
               ))}
             </ol>
           )}
         </article>
-      </section>
-
-      <section className="panel claims-panel" aria-label="Claim history">
-        <div className="panel-heading">
-          <div>
-            <span className="section-label">CLAIM HISTORY</span>
-            <h2>Latest claims</h2>
-          </div>
-          {account && recipientAddress && !isLoading && (
-            <span className="claim-total">${stats.claimCount.toString()} total</span>
-          )}
-        </div>
-
-        {!account ? (
-          <p className="muted">Connect a wallet to view claim history.</p>
-        ) : !recipientAddress ? (
-          <p className="muted">Enter a recipient address to view their claims.</p>
-        ) : isLoading ? (
-          <p className="muted">Loading claim history…</p>
-        ) : claims.length === 0 ? (
-          <p className="muted">No claims yet.</p>
-        ) : (
-          <ol className="claim-list">
-            {claims.map((claim) => (
-              <li key={claim.index.toString()}>
-                <div>
-                  <strong>{formatUsdc(claim.amount)} USDC</strong>
-                  <span>Claim #{claim.index.toString()}</span>
-                </div>
-                <time dateTime={new Date(Number(claim.timestamp) * 1000).toISOString()}>
-                  {new Date(Number(claim.timestamp) * 1000).toLocaleString()}
-                </time>
-              </li>
-            ))}
-          </ol>
-        )}
       </section>
 
       <footer>

@@ -1,5 +1,23 @@
 export const arcTipJarAbi = [
   {
+    type: "event",
+    name: "TipReceived",
+    inputs: [
+      { name: "sender", type: "address", indexed: true },
+      { name: "recipient", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "message", type: "string", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Claimed",
+    inputs: [
+      { name: "recipient", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
     type: "function",
     name: "tip",
     stateMutability: "payable",

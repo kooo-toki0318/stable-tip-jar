@@ -5,6 +5,8 @@ const ALLOWED_METHODS = new Set([
   "eth_chainId",
   "eth_getBalance",
   "eth_getCode",
+  "eth_getLogs",
+  "eth_getBlockByNumber",
   "eth_getTransactionReceipt",
 ]);
 

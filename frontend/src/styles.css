@@ -516,6 +516,98 @@ textarea:focus {
   font-weight: 700;
 }
 
+.claim-status {
+  margin: 11px 0 0;
+  color: #9baaa3;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.operation-transaction,
+.history-transaction {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 11px;
+  color: #71847b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+.operation-transaction {
+  justify-content: center;
+  padding: 10px 12px;
+  background: rgba(105, 245, 173, 0.06);
+  border: 1px solid rgba(105, 245, 173, 0.14);
+  border-radius: 11px;
+}
+
+.operation-transaction.compact {
+  justify-content: flex-start;
+  padding: 8px 10px;
+}
+
+.operation-transaction button,
+.history-transaction button {
+  padding: 0;
+  color: #8beeb5;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 800;
+}
+
+.operation-transaction a,
+.history-transaction a {
+  margin-left: auto;
+  color: #8beeb5;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+}
+
+.claim-history-details {
+  margin-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.claim-history-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0 2px;
+  color: #aebcb5;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+  list-style: none;
+}
+
+.claim-history-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.claim-history-details summary::after {
+  content: "+";
+  color: #69f5ad;
+  font-size: 1.1rem;
+}
+
+.claim-history-details[open] summary::after {
+  content: "−";
+}
+
+.claim-history-details summary strong {
+  margin: 0 0 0 auto;
+  color: #9cf5c5;
+  font-size: 0.85rem;
+}
+
+.claim-history-details > .muted {
+  margin: 14px 0 2px;
+  font-size: 0.76rem;
+}
+
 .faucet-button {
   display: block;
   margin-top: 18px;
@@ -574,6 +666,14 @@ textarea:focus {
   font-size: 0.76rem;
 }
 
+.tip-recipient {
+  display: block;
+  margin-top: 7px;
+  color: #84968d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
 .tip-list p {
   margin: 9px 0 8px;
   color: #d0dad5;
@@ -629,6 +729,33 @@ textarea:focus {
 .claim-list time {
   color: #71827a;
   font-size: 0.72rem;
+}
+
+.claim-list.compact-list {
+  grid-template-columns: 1fr;
+  margin-top: 12px;
+}
+
+.claim-list.compact-list li {
+  display: block;
+  padding: 12px;
+  text-align: left;
+}
+
+.history-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-main strong {
+  font-size: 0.85rem;
+}
+
+.history-main time {
+  color: #71827a;
+  font-size: 0.68rem;
 }
 
 footer {
@@ -709,6 +836,16 @@ footer a:hover {
 
   .claim-list li {
     align-items: flex-start;
+  }
+
+  .operation-transaction,
+  .history-transaction {
+    flex-wrap: wrap;
+  }
+
+  .operation-transaction a,
+  .history-transaction a {
+    margin-left: 0;
   }
 
   .panel,
