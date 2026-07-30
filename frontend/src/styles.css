@@ -61,7 +61,6 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   min-height: 78px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .brand,
@@ -138,7 +137,24 @@ button:disabled {
 }
 
 .wallet-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 11px 17px;
+  white-space: nowrap;
+}
+
+.wallet-address {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+}
+
+.wallet-separator {
+  opacity: 0.45;
+}
+
+.wallet-action {
+  font-size: 0.78rem;
 }
 
 .hero {
@@ -592,6 +608,16 @@ textarea:focus {
   font-weight: 800;
 }
 
+.claim-list li > .history-transaction {
+  display: flex;
+}
+
+.transaction-hash-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .claim-history-details,
 .send-history-details {
   margin-top: 14px;
@@ -856,6 +882,23 @@ footer a:hover {
     padding-inline: 13px;
   }
 
+  .wallet-button.connected {
+    display: grid;
+    gap: 1px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    line-height: 1.1;
+    text-align: center;
+  }
+
+  .wallet-button.connected .wallet-separator {
+    display: none;
+  }
+
+  .wallet-button.connected .wallet-action {
+    font-size: 0.62rem;
+  }
+
   .hero h1 {
     font-size: 3.25rem;
   }
@@ -904,11 +947,13 @@ footer a:hover {
 
 
 /* Connected dashboard and compact onboarding */
-.topbar {
+.site-header {
   position: sticky;
   top: 0;
   z-index: 30;
+  width: 100%;
   background: rgba(7, 16, 13, 0.88);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(18px);
 }
 

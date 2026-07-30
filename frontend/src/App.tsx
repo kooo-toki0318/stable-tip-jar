@@ -924,8 +924,9 @@ export default function App() {
   }
 
   return (
-    <main className="page-shell">
-      <header className="topbar">
+    <>
+      <header className="site-header">
+        <div className="topbar page-shell">
         <a className="brand" href="#top" aria-label="Arc Tip Jar home">
           <span className="brand-mark">A</span>
           <span>Arc Tip Jar</span>
@@ -957,20 +958,30 @@ export default function App() {
             GitHub
           </a>
           <button
-            className="wallet-button"
+            className={"wallet-button " + (account ? "connected" : "")}
             type="button"
             onClick={account ? disconnectWallet : connectWallet}
             disabled={isConnecting}
+            aria-label={account ? `Disconnect wallet ${account}` : "Connect wallet"}
+            title={account ?? undefined}
           >
             {account
-              ? "Disconnect"
+              ? (
+                  <>
+                    <span className="wallet-address">{shortAddress(account)}</span>
+                    <span className="wallet-separator" aria-hidden="true">·</span>
+                    <span className="wallet-action">Disconnect</span>
+                  </>
+                )
               : isConnecting
                 ? "Connecting…"
                 : "Connect wallet"}
           </button>
         </div>
+        </div>
       </header>
 
+      <main className="page-shell">
       {walletStatus && (
         <div className="wallet-notice" role="status" aria-live="polite">
           <span>{walletStatus}</span>
@@ -1134,10 +1145,12 @@ export default function App() {
                           </div>
                           {claim.txHash && (
                             <div className="history-transaction">
-                              <span>{shortHash(claim.txHash)}</span>
-                              <button className="copy-button" type="button" aria-label="Copy claim transaction hash" title={copiedHash === claim.txHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(claim.txHash!)}>
-                                <CopyIcon copied={copiedHash === claim.txHash} />
-                              </button>
+                              <span className="transaction-hash-copy">
+                                <span>{shortHash(claim.txHash)}</span>
+                                <button className="copy-button" type="button" aria-label="Copy claim transaction hash" title={copiedHash === claim.txHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(claim.txHash!)}>
+                                  <CopyIcon copied={copiedHash === claim.txHash} />
+                                </button>
+                              </span>
                               <a href={(chain.blockExplorers?.default.url ?? "") + "/tx/" + claim.txHash} target="_blank" rel="noreferrer">
                                 ArcScan ↗
                               </a>
@@ -1461,6 +1474,7 @@ export default function App() {
           {shortAddress(contractAddress)} ↗
         </a>
       </footer>
-    </main>
+      </main>
+    </>
   );
 }
