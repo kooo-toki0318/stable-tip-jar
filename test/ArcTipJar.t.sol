@@ -8,171 +8,151 @@ contract ArcTipJarTest is Test {
     uint256 private constant ONE_USDC_NATIVE = 1e18;
 
     ArcTipJar private jar;
-    address private owner;
     address private alice;
     address private bob;
     address private recipient;
 
-    event TipReceived(address indexed sender, uint256 amount, string message);
-    event Withdrawal(address indexed recipient, uint256 amount);
-    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event TipReceived(address indexed sender, address indexed recipient, uint256 amount, string message);
+    event Claimed(address indexed recipient, uint256 amount);
 
     function setUp() public {
-        owner = makeAddr("owner");
+        jar = new ArcTipJar();
         alice = makeAddr("alice");
         bob = makeAddr("bob");
         recipient = makeAddr("recipient");
-
-        vm.prank(owner);
-        jar = new ArcTipJar();
-
         vm.deal(alice, 10 * ONE_USDC_NATIVE);
         vm.deal(bob, 10 * ONE_USDC_NATIVE);
     }
 
-    function testOwnerIsDeployer() public view {
-        assertEq(jar.owner(), owner);
-    }
-
-    function testOwnershipTransferRequiresAcceptance() public {
+    function testTipCreditsSelectedRecipient() public {
         vm.expectEmit(true, true, false, true, address(jar));
-        emit OwnershipTransferStarted(owner, alice);
-
-        vm.prank(owner);
-        jar.transferOwnership(alice);
-
-        assertEq(jar.owner(), owner);
-        assertEq(jar.pendingOwner(), alice);
-
-        vm.expectEmit(true, true, false, true, address(jar));
-        emit OwnershipTransferred(owner, alice);
+        emit TipReceived(alice, recipient, 2 * ONE_USDC_NATIVE, "thank you");
 
         vm.prank(alice);
-        jar.acceptOwnership();
+        jar.tip{value: 2 * ONE_USDC_NATIVE}(recipient, "thank you");
 
-        assertEq(jar.owner(), alice);
-        assertEq(jar.pendingOwner(), address(0));
+        assertEq(jar.claimableBalance(recipient), 2 * ONE_USDC_NATIVE);
+        assertEq(jar.receivedByRecipient(recipient), 2 * ONE_USDC_NATIVE);
+        assertEq(jar.claimableTipCount(recipient), 1);
+        assertEq(jar.recipientTipCount(recipient), 1);
+        assertEq(jar.totalTipsReceived(), 2 * ONE_USDC_NATIVE);
+
+        (address sender, uint256 amount,, string memory message) = jar.getRecipientTip(recipient, 0);
+        assertEq(sender, alice);
+        assertEq(amount, 2 * ONE_USDC_NATIVE);
+        assertEq(message, "thank you");
     }
 
-    function testOnlyOwnerCanStartOwnershipTransfer() public {
+    function testRecipientsHaveIndependentJars() public {
         vm.prank(alice);
-        vm.expectRevert(ArcTipJar.OnlyOwner.selector);
-        jar.transferOwnership(bob);
-    }
-
-    function testOwnershipCannotBeTransferredToZeroAddress() public {
-        vm.prank(owner);
-        vm.expectRevert(ArcTipJar.InvalidRecipient.selector);
-        jar.transferOwnership(address(0));
-    }
-
-    function testOnlyPendingOwnerCanAcceptOwnership() public {
-        vm.prank(owner);
-        jar.transferOwnership(alice);
-
+        jar.tip{value: ONE_USDC_NATIVE}(recipient, "for recipient");
         vm.prank(bob);
-        vm.expectRevert(ArcTipJar.NoPendingOwner.selector);
-        jar.acceptOwnership();
+        jar.tip{value: 2 * ONE_USDC_NATIVE}(alice, "for alice");
+
+        assertEq(jar.claimableBalance(recipient), ONE_USDC_NATIVE);
+        assertEq(jar.claimableBalance(alice), 2 * ONE_USDC_NATIVE);
+        assertEq(jar.recipientTipCount(recipient), 1);
+        assertEq(jar.recipientTipCount(alice), 1);
     }
 
-    function testTipRecordsMessageAndTotals() public {
-        uint256 amount = 2 * ONE_USDC_NATIVE;
-        string memory message = "Thanks for building on Arc";
+    function testRecipientClaimsOwnJar() public {
+        vm.prank(alice);
+        jar.tip{value: 3 * ONE_USDC_NATIVE}(recipient, "tip");
 
         vm.expectEmit(true, false, false, true, address(jar));
-        emit TipReceived(alice, amount, message);
+        emit Claimed(recipient, 3 * ONE_USDC_NATIVE);
+        vm.prank(recipient);
+        jar.claim();
 
-        vm.prank(alice);
-        jar.tip{value: amount}(message);
-
-        assertEq(address(jar).balance, amount);
-        assertEq(jar.totalTipsReceived(), amount);
-        assertEq(jar.tipsByAddress(alice), amount);
-        assertEq(jar.tipCount(), 1);
-
-        (address sender, uint256 storedAmount, uint256 timestamp, string memory storedMessage) = jar.getTip(0);
-
-        assertEq(sender, alice);
-        assertEq(storedAmount, amount);
-        assertEq(timestamp, block.timestamp);
-        assertEq(storedMessage, message);
+        assertEq(recipient.balance, 3 * ONE_USDC_NATIVE);
+        assertEq(jar.claimableBalance(recipient), 0);
+        assertEq(jar.claimableTipCount(recipient), 0);
+        assertEq(jar.claimedByRecipient(recipient), 3 * ONE_USDC_NATIVE);
+        assertEq(jar.totalClaimed(), 3 * ONE_USDC_NATIVE);
+        assertEq(jar.recipientClaimCount(recipient), 1);
+        (uint256 claimedAmount, uint256 claimedAt) = jar.getRecipientClaim(recipient, 0);
+        assertEq(claimedAmount, 3 * ONE_USDC_NATIVE);
+        assertEq(claimedAt, block.timestamp);
+        assertEq(jar.receivedByRecipient(recipient), 3 * ONE_USDC_NATIVE);
+        assertEq(jar.recipientTipCount(recipient), 1);
     }
 
-    function testPlainTransferCreatesTipWithoutMessage() public {
-        uint256 amount = ONE_USDC_NATIVE / 2;
+    function testClaimHistoryAccumulatesPerRecipient() public {
+        vm.prank(alice);
+        jar.tip{value: ONE_USDC_NATIVE}(recipient, "first");
+        vm.prank(recipient);
+        jar.claim();
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(bob);
+        jar.tip{value: 2 * ONE_USDC_NATIVE}(recipient, "second");
+        vm.prank(recipient);
+        jar.claim();
+
+        assertEq(jar.recipientClaimCount(recipient), 2);
+        (uint256 firstAmount,) = jar.getRecipientClaim(recipient, 0);
+        (uint256 secondAmount, uint256 secondTimestamp) = jar.getRecipientClaim(recipient, 1);
+        assertEq(firstAmount, ONE_USDC_NATIVE);
+        assertEq(secondAmount, 2 * ONE_USDC_NATIVE);
+        assertEq(secondTimestamp, block.timestamp);
+    }
+
+    function testAnotherWalletCannotClaimRecipientsJar() public {
+        vm.prank(alice);
+        jar.tip{value: ONE_USDC_NATIVE}(recipient, "tip");
 
         vm.prank(bob);
-        (bool success,) = address(jar).call{value: amount}("");
+        vm.expectRevert(ArcTipJar.NothingToClaim.selector);
+        jar.claim();
+
+        assertEq(jar.claimableBalance(recipient), ONE_USDC_NATIVE);
+    }
+
+    function testSelfTipCanBeClaimed() public {
+        vm.prank(alice);
+        jar.tip{value: ONE_USDC_NATIVE}(alice, "self");
+        vm.prank(alice);
+        jar.claim();
+
+        assertEq(alice.balance, 10 * ONE_USDC_NATIVE);
+        assertEq(jar.claimableBalance(alice), 0);
+    }
+
+    function testPlainTransferCreatesSelfTip() public {
+        vm.prank(alice);
+        (bool success,) = address(jar).call{value: ONE_USDC_NATIVE}("");
 
         assertTrue(success);
-        assertEq(jar.tipCount(), 1);
+        assertEq(jar.claimableBalance(alice), ONE_USDC_NATIVE);
+        assertEq(jar.recipientTipCount(alice), 1);
+    }
 
-        (address sender, uint256 storedAmount,, string memory message) = jar.getTip(0);
-
-        assertEq(sender, bob);
-        assertEq(storedAmount, amount);
-        assertEq(message, "");
+    function testZeroRecipientReverts() public {
+        vm.prank(alice);
+        vm.expectRevert(ArcTipJar.InvalidRecipient.selector);
+        jar.tip{value: ONE_USDC_NATIVE}(address(0), "tip");
     }
 
     function testZeroTipReverts() public {
         vm.prank(alice);
         vm.expectRevert(ArcTipJar.ZeroTip.selector);
-        jar.tip("");
+        jar.tip(recipient, "tip");
     }
 
     function testMessageLongerThan280BytesReverts() public {
-        string memory longMessage = new string(281);
-
         vm.prank(alice);
         vm.expectRevert(ArcTipJar.MessageTooLong.selector);
-        jar.tip{value: ONE_USDC_NATIVE}(longMessage);
+        jar.tip{value: ONE_USDC_NATIVE}(recipient, new string(281));
     }
 
-    function testOnlyOwnerCanWithdraw() public {
-        vm.prank(alice);
-        jar.tip{value: ONE_USDC_NATIVE}("tip");
-
-        vm.prank(alice);
-        vm.expectRevert(ArcTipJar.OnlyOwner.selector);
-        jar.withdraw(payable(recipient), ONE_USDC_NATIVE);
+    function testClaimWithNoBalanceReverts() public {
+        vm.prank(recipient);
+        vm.expectRevert(ArcTipJar.NothingToClaim.selector);
+        jar.claim();
     }
 
-    function testOwnerCanWithdrawPartOfBalance() public {
-        uint256 tipAmount = 3 * ONE_USDC_NATIVE;
-        uint256 withdrawalAmount = 2 * ONE_USDC_NATIVE;
-
-        vm.prank(alice);
-        jar.tip{value: tipAmount}("tip");
-
-        vm.expectEmit(true, false, false, true, address(jar));
-        emit Withdrawal(recipient, withdrawalAmount);
-
-        vm.prank(owner);
-        jar.withdraw(payable(recipient), withdrawalAmount);
-
-        assertEq(recipient.balance, withdrawalAmount);
-        assertEq(address(jar).balance, tipAmount - withdrawalAmount);
-        assertEq(jar.totalWithdrawn(), withdrawalAmount);
-    }
-
-    function testOwnerCanWithdrawAll() public {
-        vm.prank(alice);
-        jar.tip{value: ONE_USDC_NATIVE}("one");
-
-        vm.prank(bob);
-        jar.tip{value: 2 * ONE_USDC_NATIVE}("two");
-
-        vm.prank(owner);
-        jar.withdrawAll(payable(recipient));
-
-        assertEq(recipient.balance, 3 * ONE_USDC_NATIVE);
-        assertEq(address(jar).balance, 0);
-        assertEq(jar.totalWithdrawn(), 3 * ONE_USDC_NATIVE);
-    }
-
-    function testUnknownTipIndexReverts() public {
+    function testUnknownRecipientTipReverts() public {
         vm.expectRevert(ArcTipJar.TipNotFound.selector);
-        jar.getTip(0);
+        jar.getRecipientTip(recipient, 0);
     }
 }
