@@ -42,7 +42,7 @@ export const arcTestnet = defineChain({
 
 const testnetContractAddress = getAddress(
   import.meta.env.VITE_ARC_TIP_JAR_ADDRESS ??
-    "0x8549ac9926F4669DB44D66978f810A84f525D1e2",
+    "0x44FD57BaeaAC3D2F0a20a8032840E00bd44E8668",
 );
 
 export const arcTestnetConfig: ArcNetworkConfig = {

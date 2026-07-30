@@ -4,7 +4,9 @@ import {
   createWalletClient,
   custom,
   formatUnits,
+  getAddress,
   http,
+  isAddress,
   parseUnits,
   toHex,
   type Address,
@@ -35,18 +37,28 @@ type Tip = {
   message: string;
 };
 
+type ClaimRecord = {
+  index: bigint;
+  amount: bigint;
+  timestamp: bigint;
+};
+
 type JarStats = {
   balance: bigint;
   totalReceived: bigint;
-  totalWithdrawn: bigint;
+  totalClaimed: bigint;
+  claimableCount: bigint;
   tipCount: bigint;
+  claimCount: bigint;
 };
 
 const emptyStats: JarStats = {
   balance: 0n,
   totalReceived: 0n,
-  totalWithdrawn: 0n,
+  totalClaimed: 0n,
+  claimableCount: 0n,
   tipCount: 0n,
+  claimCount: 0n,
 };
 
 function shortAddress(address: Address): string {
@@ -89,13 +101,14 @@ export default function App() {
   const [chainId, setChainId] = useState<number | null>(null);
   const [selectedNetworkKey, setSelectedNetworkKey] =
     useState<ArcNetworkKey>("testnet");
+  const [recipientInput, setRecipientInput] = useState("");
   const [amount, setAmount] = useState("0.01");
+  const [amountPercentage, setAmountPercentage] = useState(0);
   const [message, setMessage] = useState("Thanks for building on Arc!");
   const [stats, setStats] = useState<JarStats>(emptyStats);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
-  const [contractOwner, setContractOwner] = useState<Address | null>(null);
-  const [claimableTipCount, setClaimableTipCount] = useState<number | null>(null);
   const [tips, setTips] = useState<Tip[]>([]);
+  const [claims, setClaims] = useState<ClaimRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -115,10 +128,17 @@ export default function App() {
     [chain, selectedNetwork.browserRpcUrl],
   );
   const isCorrectNetwork = chainId === chain.id;
-  const isOwner =
+  const gasReserve = parseUnits("0.01", 18);
+  const spendableBalance =
+    walletBalance && walletBalance > gasReserve ? walletBalance - gasReserve : 0n;
+  const recipientAddress = useMemo(
+    () => (isAddress(recipientInput) ? getAddress(recipientInput) : null),
+    [recipientInput],
+  );
+  const canClaim =
     account !== null &&
-    contractOwner !== null &&
-    account.toLowerCase() === contractOwner.toLowerCase();
+    recipientAddress !== null &&
+    account.toLowerCase() === recipientAddress.toLowerCase();
   const contractExplorerUrl = `${chain.blockExplorers?.default.url}/address/${contractAddress}`;
   const messageBytes = useMemo(
     () => new TextEncoder().encode(message).length,
@@ -126,26 +146,26 @@ export default function App() {
   );
 
   const refreshData = useCallback(async () => {
-    if (!account) return;
+    if (!account || !recipientAddress) return;
     setIsLoading(true);
     try {
       const contract = { address: contractAddress, abi: arcTipJarAbi } as const;
-      const [balance, totalReceived, totalWithdrawn, tipCount, owner] =
+      const [balance, claimableCount, totalReceived, totalClaimed, tipCount, claimCount] =
         await withRpcRetry(() =>
           publicClient.multicall({
             allowFailure: false,
             contracts: [
-              { ...contract, functionName: "jarBalance" },
-              { ...contract, functionName: "totalTipsReceived" },
-              { ...contract, functionName: "totalWithdrawn" },
-              { ...contract, functionName: "tipCount" },
-              { ...contract, functionName: "owner" },
+              { ...contract, functionName: "claimableBalance", args: [recipientAddress] },
+              { ...contract, functionName: "claimableTipCount", args: [recipientAddress] },
+              { ...contract, functionName: "receivedByRecipient", args: [recipientAddress] },
+              { ...contract, functionName: "claimedByRecipient", args: [recipientAddress] },
+              { ...contract, functionName: "recipientTipCount", args: [recipientAddress] },
+              { ...contract, functionName: "recipientClaimCount", args: [recipientAddress] },
             ],
           }),
         );
 
-      setStats({ balance, totalReceived, totalWithdrawn, tipCount });
-      setContractOwner(owner);
+      setStats({ balance, claimableCount, totalReceived, totalClaimed, tipCount, claimCount });
       setIsContractReady(true);
 
       const readableCount = tipCount > 100n ? 100n : tipCount;
@@ -157,15 +177,14 @@ export default function App() {
       try {
         if (indexes.length === 0) {
           setTips([]);
-          setClaimableTipCount(0);
         } else {
           const tipResults = await withRpcRetry(() =>
             publicClient.multicall({
               allowFailure: false,
               contracts: indexes.map((index) => ({
                 ...contract,
-                functionName: "getTip" as const,
-                args: [index] as const,
+                functionName: "getRecipientTip" as const,
+                args: [recipientAddress, index] as const,
               })),
             }),
           );
@@ -180,30 +199,52 @@ export default function App() {
             }),
           );
           setTips(loadedTips.slice(0, 8));
-
-          let representedBalance = 0n;
-          let currentTipCount = 0;
-          for (const tip of loadedTips) {
-            if (representedBalance >= balance) break;
-            representedBalance += tip.amount;
-            currentTipCount += 1;
-          }
-          setClaimableTipCount(balance === 0n ? 0 : currentTipCount);
         }
       } catch (error) {
         setTips([]);
-        setClaimableTipCount(null);
         setStatus(`Contract connected, but recent tips could not be loaded: ${getErrorMessage(error)}`);
+      }
+
+      try {
+        const visibleClaimCount = claimCount > 8n ? 8n : claimCount;
+        const claimIndexes = Array.from(
+          { length: Number(visibleClaimCount) },
+          (_, offset) => claimCount - 1n - BigInt(offset),
+        );
+
+        if (claimIndexes.length === 0) {
+          setClaims([]);
+        } else {
+          const claimResults = await withRpcRetry(() =>
+            publicClient.multicall({
+              allowFailure: false,
+              contracts: claimIndexes.map((index) => ({
+                ...contract,
+                functionName: "getRecipientClaim" as const,
+                args: [recipientAddress, index] as const,
+              })),
+            }),
+          );
+          setClaims(
+            claimResults.map(([amount, timestamp], offset): ClaimRecord => ({
+              index: claimIndexes[offset],
+              amount,
+              timestamp,
+            })),
+          );
+        }
+      } catch (error) {
+        setClaims([]);
+        setStatus(`Contract connected, but claim history could not be loaded: ${getErrorMessage(error)}`);
       }
     } catch (error) {
       setIsContractReady(false);
-      setContractOwner(null);
-      setClaimableTipCount(null);
+      setClaims([]);
       setStatus(`Could not load contract data: ${getErrorMessage(error)}`);
     } finally {
       setIsLoading(false);
     }
-  }, [account, contractAddress, publicClient]);
+  }, [account, contractAddress, publicClient, recipientAddress]);
 
   const refreshWalletBalance = useCallback(async () => {
     if (!account) {
@@ -232,6 +273,7 @@ export default function App() {
     ]);
 
     setAccount(accounts[0] ?? null);
+    setRecipientInput((current) => current || accounts[0] || "");
     const nextChainId = Number.parseInt(walletChainId, 16);
     setChainId(nextChainId);
     const detectedNetwork = getArcNetworkByChainId(nextChainId);
@@ -243,18 +285,17 @@ export default function App() {
   }, [syncWalletState]);
 
   useEffect(() => {
-    if (account) {
+    if (account && recipientAddress) {
       void refreshData();
       return;
     }
 
     setStats(emptyStats);
     setTips([]);
-    setContractOwner(null);
-    setClaimableTipCount(null);
+    setClaims([]);
     setIsContractReady(false);
     setIsLoading(false);
-  }, [account, refreshData]);
+  }, [account, recipientAddress, refreshData]);
 
   useEffect(() => {
     void refreshWalletBalance();
@@ -273,6 +314,7 @@ export default function App() {
         return;
       }
       setAccount(accounts[0] ?? null);
+      setRecipientInput((current) => current || accounts[0] || "");
     };
 
     const handleChainChanged = (...args: unknown[]) => {
@@ -306,6 +348,7 @@ export default function App() {
 
       window.localStorage.removeItem("arc-tip-jar-disconnected");
       setAccount(accounts[0] ?? null);
+      setRecipientInput((current) => current || accounts[0] || "");
       const walletChainId = Number.parseInt(
         (await window.ethereum.request({ method: "eth_chainId" })) as string,
         16,
@@ -347,6 +390,7 @@ export default function App() {
       window.localStorage.setItem("arc-tip-jar-disconnected", "true");
       setAccount(null);
       setChainId(null);
+      setRecipientInput("");
       setTxHash(null);
       setStatus("Wallet disconnected from this dApp.");
     }
@@ -404,6 +448,33 @@ export default function App() {
     }
   }
 
+  function setPresetAmount(nextAmount: string) {
+    setAmount(nextAmount);
+    if (spendableBalance === 0n) {
+      setAmountPercentage(0);
+      return;
+    }
+    const value = parseUnits(nextAmount, 18);
+    const percentage = Number((value * 10_000n) / spendableBalance) / 100;
+    setAmountPercentage(Math.min(100, Math.max(0, percentage)));
+  }
+
+  function setAmountFromPercentage(percentage: number) {
+    setAmountPercentage(percentage);
+    if (spendableBalance === 0n) {
+      setAmount("0");
+      return;
+    }
+    const value = (spendableBalance * BigInt(percentage)) / 100n;
+    setAmount(formatUnits(value, 18));
+  }
+
+  function useConnectedWalletAsRecipient() {
+    if (!account) return;
+    setRecipientInput(account);
+    setStatus("");
+  }
+
   async function sendTip(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("");
@@ -421,6 +492,10 @@ export default function App() {
       setStatus(
         `The configured contract could not be verified on ${chain.name}. Refresh and try again.`,
       );
+      return;
+    }
+    if (!recipientAddress) {
+      setStatus("Enter a valid recipient wallet address.");
       return;
     }
     if (messageBytes > 280) {
@@ -449,7 +524,7 @@ export default function App() {
         address: contractAddress,
         abi: arcTipJarAbi,
         functionName: "tip",
-        args: [message],
+        args: [recipientAddress, message],
         value,
       });
 
@@ -459,6 +534,7 @@ export default function App() {
       await publicClient.waitForTransactionReceipt({ hash });
       setStatus(`Tip confirmed on ${chain.name}.`);
       setAmount("0.01");
+      setAmountPercentage(0);
       setMessage("");
       await Promise.all([refreshData(), refreshWalletBalance()]);
     } catch (error) {
@@ -472,8 +548,8 @@ export default function App() {
     setStatus("");
     setTxHash(null);
 
-    if (!window.ethereum || !account || !isOwner) {
-      setStatus("Only the Tip Jar owner can claim collected tips.");
+    if (!window.ethereum || !account || !canClaim) {
+      setStatus("Connect the recipient wallet to claim its collected tips.");
       return;
     }
     if (!isCorrectNetwork) {
@@ -495,8 +571,7 @@ export default function App() {
       const hash = await walletClient.writeContract({
         address: contractAddress,
         abi: arcTipJarAbi,
-        functionName: "withdrawAll",
-        args: [account],
+        functionName: "claim",
       });
 
       setTxHash(hash);
@@ -572,12 +647,14 @@ export default function App() {
         <article className="stat-card claim-card">
           <span>Tips available to claim</span>
           <strong>{account && !isLoading ? formatUsdc(stats.balance) : "—"} USDC</strong>
-          <small>
-            {account && claimableTipCount !== null
-              ? `${claimableTipCount} current tip${claimableTipCount === 1 ? "" : "s"} available`
-              : "Connect a wallet to view claimable tips"}
+          <small className="tip-count-detail">
+            {account && recipientAddress && !isLoading ? (
+              <><strong>${stats.claimableCount.toString()}</strong> current tip${stats.claimableCount === 1n ? "" : "s"}</>
+            ) : (
+              "Connect a wallet and choose a recipient"
+            )}
           </small>
-          {isOwner && (
+          {canClaim && (
             <button
               className="claim-button"
               type="button"
@@ -591,10 +668,12 @@ export default function App() {
         <article className="stat-card">
           <span>Total tips received</span>
           <strong>{account && !isLoading ? formatUsdc(stats.totalReceived) : "—"} USDC</strong>
-          <small>
-            {account && !isLoading
-              ? `${stats.tipCount.toString()} total onchain tip${stats.tipCount === 1n ? "" : "s"}`
-              : "Connect a wallet to view lifetime totals"}
+          <small className="tip-count-detail">
+            {account && recipientAddress && !isLoading ? (
+              <><strong>${stats.tipCount.toString()}</strong> lifetime tip${stats.tipCount === 1n ? "" : "s"}</>
+            ) : (
+              "Connect a wallet and choose a recipient"
+            )}
           </small>
         </article>
       </section>
@@ -637,17 +716,73 @@ export default function App() {
             </div>
           ) : (
             <form onSubmit={sendTip}>
+              <div className="field-heading">
+                <label htmlFor="recipient">Recipient wallet</label>
+                <button
+                  className="inline-action"
+                  type="button"
+                  onClick={useConnectedWalletAsRecipient}
+                >
+                  Use my address
+                </button>
+              </div>
+              <input
+                className={`address-input ${recipientInput && !recipientAddress ? "invalid" : ""}`}
+                id="recipient"
+                value={recipientInput}
+                onChange={(event) => setRecipientInput(event.target.value.trim())}
+                placeholder="0x…"
+                spellCheck={false}
+                required
+              />
+              {recipientInput && !recipientAddress && (
+                <p className="field-error">Enter a valid EVM wallet address.</p>
+              )}
+
               <label htmlFor="amount">Amount</label>
               <div className="amount-input">
                 <input
                   id="amount"
                   inputMode="decimal"
                   value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
+                  onChange={(event) => {
+                    setAmount(event.target.value);
+                    setAmountPercentage(0);
+                  }}
                   placeholder="0.01"
                   required
                 />
                 <span>USDC</span>
+              </div>
+
+              <div className="amount-presets" aria-label="Tip amount presets">
+                {["1", "5", "10"].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setPresetAmount(preset)}
+                  >
+                    ${preset} USDC
+                  </button>
+                ))}
+              </div>
+
+              <div className="percentage-control">
+                <div>
+                  <span>Spendable balance percentage</span>
+                  <strong>${amountPercentage.toFixed(amountPercentage % 1 === 0 ? 0 : 2)}%</strong>
+                </div>
+                <input
+                  aria-label="Wallet balance percentage"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round(amountPercentage)}
+                  onChange={(event) => setAmountFromPercentage(Number(event.target.value))}
+                  disabled={!walletBalance || walletBalance === 0n}
+                />
+                <div className="range-labels"><span>0%</span><span>100% (keeps 0.01 for gas)</span></div>
               </div>
 
               <label htmlFor="message">Onchain message</label>
@@ -708,6 +843,8 @@ export default function App() {
 
           {!account ? (
             <p className="muted">Connect a wallet to view recent activity.</p>
+          ) : !recipientAddress ? (
+            <p className="muted">Enter a recipient address to view their activity.</p>
           ) : isLoading ? (
             <p className="muted">Loading onchain data…</p>
           ) : tips.length === 0 ? (
@@ -729,6 +866,42 @@ export default function App() {
             </ol>
           )}
         </article>
+      </section>
+
+      <section className="panel claims-panel" aria-label="Claim history">
+        <div className="panel-heading">
+          <div>
+            <span className="section-label">CLAIM HISTORY</span>
+            <h2>Latest claims</h2>
+          </div>
+          {account && recipientAddress && !isLoading && (
+            <span className="claim-total">${stats.claimCount.toString()} total</span>
+          )}
+        </div>
+
+        {!account ? (
+          <p className="muted">Connect a wallet to view claim history.</p>
+        ) : !recipientAddress ? (
+          <p className="muted">Enter a recipient address to view their claims.</p>
+        ) : isLoading ? (
+          <p className="muted">Loading claim history…</p>
+        ) : claims.length === 0 ? (
+          <p className="muted">No claims yet.</p>
+        ) : (
+          <ol className="claim-list">
+            {claims.map((claim) => (
+              <li key={claim.index.toString()}>
+                <div>
+                  <strong>{formatUsdc(claim.amount)} USDC</strong>
+                  <span>Claim #{claim.index.toString()}</span>
+                </div>
+                <time dateTime={new Date(Number(claim.timestamp) * 1000).toISOString()}>
+                  {new Date(Number(claim.timestamp) * 1000).toLocaleString()}
+                </time>
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
 
       <footer>
