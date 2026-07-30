@@ -6,15 +6,17 @@ import {
   formatUnits,
   http,
   parseUnits,
+  toHex,
   type Address,
   type EIP1193Provider,
   type Hash,
 } from "viem";
 import { arcTipJarAbi } from "./abi";
 import {
-  arcTestnet,
-  contractAddress,
-  explorerAddressUrl,
+  arcNetworks,
+  getArcNetworkByChainId,
+  type ArcNetworkConfig,
+  type ArcNetworkKey,
 } from "./arc";
 
 type BrowserEthereumProvider = EIP1193Provider;
@@ -39,11 +41,6 @@ type JarStats = {
   totalWithdrawn: bigint;
   tipCount: bigint;
 };
-
-const publicClient = createPublicClient({
-  chain: arcTestnet,
-  transport: http(arcTestnet.rpcUrls.default.http[0]),
-});
 
 const emptyStats: JarStats = {
   balance: 0n,
@@ -76,6 +73,8 @@ function getErrorMessage(error: unknown): string {
 export default function App() {
   const [account, setAccount] = useState<Address | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
+  const [selectedNetworkKey, setSelectedNetworkKey] =
+    useState<ArcNetworkKey>("testnet");
   const [amount, setAmount] = useState("0.01");
   const [message, setMessage] = useState("Thanks for building on Arc!");
   const [stats, setStats] = useState<JarStats>(emptyStats);
@@ -87,7 +86,18 @@ export default function App() {
   const [status, setStatus] = useState<string>("");
   const [txHash, setTxHash] = useState<Hash | null>(null);
 
-  const isCorrectNetwork = chainId === arcTestnet.id;
+  const selectedNetwork = arcNetworks[selectedNetworkKey] ?? arcNetworks.testnet!;
+  const { chain, contractAddress } = selectedNetwork;
+  const publicClient = useMemo(
+    () =>
+      createPublicClient({
+        chain,
+        transport: http(chain.rpcUrls.default.http[0]),
+      }),
+    [chain],
+  );
+  const isCorrectNetwork = chainId === chain.id;
+  const contractExplorerUrl = `${chain.blockExplorers?.default.url}/address/${contractAddress}`;
   const messageBytes = useMemo(
     () => new TextEncoder().encode(message).length,
     [message],
@@ -101,14 +111,14 @@ export default function App() {
         publicClient.getCode({ address: contractAddress }),
       ]);
 
-      if (rpcChainId !== arcTestnet.id) {
+      if (rpcChainId !== chain.id) {
         throw new Error(
-          `RPC returned chain ID ${rpcChainId}; expected ${arcTestnet.id}.`,
+          `RPC returned chain ID ${rpcChainId}; expected ${chain.id}.`,
         );
       }
       if (!bytecode || bytecode === "0x") {
         throw new Error(
-          `No contract is deployed at ${contractAddress} on Arc Testnet.`,
+          `No contract is deployed at ${contractAddress} on ${chain.name}.`,
         );
       }
 
@@ -172,7 +182,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [chain.id, chain.name, contractAddress, publicClient]);
 
   const syncWalletState = useCallback(async () => {
     if (!window.ethereum) return;
@@ -183,7 +193,10 @@ export default function App() {
     ]);
 
     setAccount(accounts[0] ?? null);
-    setChainId(Number.parseInt(walletChainId, 16));
+    const nextChainId = Number.parseInt(walletChainId, 16);
+    setChainId(nextChainId);
+    const detectedNetwork = getArcNetworkByChainId(nextChainId);
+    if (detectedNetwork) setSelectedNetworkKey(detectedNetwork.key);
   }, []);
 
   useEffect(() => {
@@ -201,8 +214,10 @@ export default function App() {
     };
 
     const handleChainChanged = (...args: unknown[]) => {
-      const nextChainId = args[0] as string;
-      setChainId(Number.parseInt(nextChainId, 16));
+      const nextChainId = Number.parseInt(args[0] as string, 16);
+      setChainId(nextChainId);
+      const detectedNetwork = getArcNetworkByChainId(nextChainId);
+      if (detectedNetwork) setSelectedNetworkKey(detectedNetwork.key);
     };
 
     provider.on("accountsChanged", handleAccountsChanged);
@@ -228,7 +243,18 @@ export default function App() {
       })) as Address[];
 
       setAccount(accounts[0] ?? null);
-      await switchToArc();
+      const walletChainId = Number.parseInt(
+        (await window.ethereum.request({ method: "eth_chainId" })) as string,
+        16,
+      );
+      setChainId(walletChainId);
+
+      const detectedNetwork = getArcNetworkByChainId(walletChainId);
+      if (detectedNetwork) {
+        setSelectedNetworkKey(detectedNetwork.key);
+      } else {
+        await switchToNetwork(selectedNetwork);
+      }
     } catch (error) {
       setStatus(getErrorMessage(error));
     } finally {
@@ -236,15 +262,16 @@ export default function App() {
     }
   }
 
-  async function switchToArc() {
+  async function switchToNetwork(network: ArcNetworkConfig) {
     if (!window.ethereum) return;
 
+    const requestedChainId = toHex(network.chain.id);
     try {
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0x4cef52" }],
+        params: [{ chainId: requestedChainId }],
       });
-      setChainId(arcTestnet.id);
+      setChainId(network.chain.id);
     } catch (error) {
       const code =
         typeof error === "object" && error !== null && "code" in error
@@ -257,15 +284,33 @@ export default function App() {
         method: "wallet_addEthereumChain",
         params: [
           {
-            chainId: "0x4cef52",
-            chainName: arcTestnet.name,
-            nativeCurrency: arcTestnet.nativeCurrency,
-            rpcUrls: [...arcTestnet.rpcUrls.default.http],
-            blockExplorerUrls: [arcTestnet.blockExplorers.default.url],
+            chainId: requestedChainId,
+            chainName: network.chain.name,
+            nativeCurrency: network.chain.nativeCurrency,
+            rpcUrls: [...network.chain.rpcUrls.default.http],
+            blockExplorerUrls: network.chain.blockExplorers
+              ? [network.chain.blockExplorers.default.url]
+              : undefined,
           },
         ],
       });
-      setChainId(arcTestnet.id);
+      setChainId(network.chain.id);
+    }
+  }
+
+  async function selectNetwork(nextKey: ArcNetworkKey) {
+    const nextNetwork = arcNetworks[nextKey];
+    if (!nextNetwork) return;
+
+    setSelectedNetworkKey(nextKey);
+    setStatus("");
+    setTxHash(null);
+    if (account && chainId !== nextNetwork.chain.id) {
+      try {
+        await switchToNetwork(nextNetwork);
+      } catch (error) {
+        setStatus(getErrorMessage(error));
+      }
     }
   }
 
@@ -279,12 +324,12 @@ export default function App() {
       return;
     }
     if (!isCorrectNetwork) {
-      setStatus("Switch to Arc Testnet before sending a tip.");
+      setStatus(`Switch to ${chain.name} before sending a tip.`);
       return;
     }
     if (!isContractReady) {
       setStatus(
-        "The configured contract could not be verified on Arc Testnet. Refresh and try again.",
+        `The configured contract could not be verified on ${chain.name}. Refresh and try again.`,
       );
       return;
     }
@@ -306,7 +351,7 @@ export default function App() {
     try {
       const walletClient = createWalletClient({
         account,
-        chain: arcTestnet,
+        chain,
         transport: custom(window.ethereum),
       });
 
@@ -322,7 +367,7 @@ export default function App() {
       setStatus("Transaction submitted. Waiting for confirmation…");
 
       await publicClient.waitForTransactionReceipt({ hash });
-      setStatus("Tip confirmed on Arc Testnet.");
+      setStatus(`Tip confirmed on ${chain.name}.`);
       setAmount("0.01");
       setMessage("");
       await refreshData();
@@ -341,9 +386,24 @@ export default function App() {
           <span>Arc Tip Jar</span>
         </a>
         <div className="header-actions">
-          <a href={explorerAddressUrl} target="_blank" rel="noreferrer">
+          <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
             Contract
           </a>
+          <label className="network-select-label">
+            <span className="sr-only">Arc network</span>
+            <select
+              aria-label="Arc network"
+              value={selectedNetworkKey}
+              onChange={(event) =>
+                void selectNetwork(event.target.value as ArcNetworkKey)
+              }
+            >
+              <option value="testnet">Arc Testnet</option>
+              <option value="mainnet" disabled={!arcNetworks.mainnet}>
+                Arc Mainnet{arcNetworks.mainnet ? "" : " (Coming soon)"}
+              </option>
+            </select>
+          </label>
           <a
             href="https://github.com/kooo-toki0318/arc-tip-jar"
             target="_blank"
@@ -363,7 +423,7 @@ export default function App() {
       </header>
 
       <section id="top" className="hero">
-        <div className="eyebrow">BUILT ON ARC TESTNET</div>
+        <div className="eyebrow">BUILT ON {chain.name.toUpperCase()}</div>
         <h1>Send a tiny thank-you.<br />Keep it onchain.</h1>
         <p className="hero-copy">
           Tip native USDC, attach a message, and leave a public contribution
@@ -394,13 +454,13 @@ export default function App() {
               <h2>Support the jar</h2>
             </div>
             <span className={`network-pill ${isCorrectNetwork ? "online" : ""}`}>
-              {isCorrectNetwork ? "Arc connected" : "Arc Testnet required"}
+              {isCorrectNetwork ? `${chain.name} connected` : `${chain.name} required`}
             </span>
           </div>
 
           {!account ? (
             <div className="connect-state">
-              <p>Connect a wallet to send native testnet USDC.</p>
+              <p>Connect a wallet to send native {chain.testnet ? "testnet " : ""}USDC.</p>
               <button type="button" onClick={connectWallet} disabled={isConnecting}>
                 {isConnecting ? "Connecting…" : "Connect wallet"}
               </button>
@@ -408,8 +468,8 @@ export default function App() {
           ) : !isCorrectNetwork ? (
             <div className="connect-state">
               <p>Your wallet is connected to another network.</p>
-              <button type="button" onClick={switchToArc}>
-                Switch to Arc Testnet
+              <button type="button" onClick={() => void switchToNetwork(selectedNetwork)}>
+                Switch to {chain.name}
               </button>
             </div>
           ) : (
@@ -449,11 +509,21 @@ export default function App() {
             </form>
           )}
 
+          {selectedNetwork.faucetUrl && (
+            <a
+              className="faucet-button"
+              href={selectedNetwork.faucetUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Get testnet USDC from the official Circle Faucet ↗
+            </a>
+          )}
           {status && <p className="status-message">{status}</p>}
           {txHash && (
             <a
               className="transaction-link"
-              href={`${arcTestnet.blockExplorers.default.url}/tx/${txHash}`}
+              href={`${chain.blockExplorers?.default.url}/tx/${txHash}`}
               target="_blank"
               rel="noreferrer"
             >
@@ -497,8 +567,8 @@ export default function App() {
       </section>
 
       <footer>
-        <span>Experimental testnet dApp. Testnet USDC has no real-world value.</span>
-        <a href={explorerAddressUrl} target="_blank" rel="noreferrer">
+        <span>{chain.testnet ? "Experimental testnet dApp. Testnet USDC has no real-world value." : "Arc Tip Jar on Mainnet."}</span>
+        <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
           {shortAddress(contractAddress)} ↗
         </a>
       </footer>

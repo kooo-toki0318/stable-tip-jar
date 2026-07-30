@@ -1,4 +1,14 @@
-import { defineChain, getAddress, type Address } from "viem";
+import { defineChain, getAddress, type Address, type Chain } from "viem";
+
+export type ArcNetworkKey = "testnet" | "mainnet";
+
+export type ArcNetworkConfig = {
+  key: ArcNetworkKey;
+  label: string;
+  chain: Chain;
+  contractAddress: Address;
+  faucetUrl?: string;
+};
 
 export const arcTestnet = defineChain({
   id: 5_042_002,
@@ -23,9 +33,58 @@ export const arcTestnet = defineChain({
   testnet: true,
 });
 
-const configuredAddress =
+const testnetContractAddress = getAddress(
   import.meta.env.VITE_ARC_TIP_JAR_ADDRESS ??
-  "0x8549ac9926F4669DB44D66978f810A84f525D1e2";
+    "0x8549ac9926F4669DB44D66978f810A84f525D1e2",
+);
 
-export const contractAddress: Address = getAddress(configuredAddress);
-export const explorerAddressUrl = `${arcTestnet.blockExplorers.default.url}/address/${contractAddress}`;
+export const arcTestnetConfig: ArcNetworkConfig = {
+  key: "testnet",
+  label: "Arc Testnet",
+  chain: arcTestnet,
+  contractAddress: testnetContractAddress,
+  faucetUrl: "https://faucet.circle.com",
+};
+
+// Arc Mainnet is not publicly available yet. Once its official network details
+// and a deployed Tip Jar address are provided, these environment variables make
+// the existing network selector and wallet switching flow Mainnet-ready.
+const mainnetChainId = Number(import.meta.env.VITE_ARC_MAINNET_CHAIN_ID);
+const mainnetRpcUrl = import.meta.env.VITE_ARC_MAINNET_RPC_URL;
+const mainnetExplorerUrl = import.meta.env.VITE_ARC_MAINNET_EXPLORER_URL;
+const mainnetContractAddress = import.meta.env.VITE_ARC_MAINNET_TIP_JAR_ADDRESS;
+
+const arcMainnetConfig: ArcNetworkConfig | null =
+  Number.isSafeInteger(mainnetChainId) &&
+  mainnetChainId > 0 &&
+  mainnetRpcUrl &&
+  mainnetExplorerUrl &&
+  mainnetContractAddress
+    ? {
+        key: "mainnet",
+        label: "Arc Mainnet",
+        chain: defineChain({
+          id: mainnetChainId,
+          name: "Arc Mainnet",
+          nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+          rpcUrls: { default: { http: [mainnetRpcUrl] } },
+          blockExplorers: {
+            default: { name: "ArcScan", url: mainnetExplorerUrl },
+          },
+        }),
+        contractAddress: getAddress(mainnetContractAddress),
+      }
+    : null;
+
+export const arcNetworks: Record<ArcNetworkKey, ArcNetworkConfig | null> = {
+  testnet: arcTestnetConfig,
+  mainnet: arcMainnetConfig,
+};
+
+export function getArcNetworkByChainId(
+  chainId: number,
+): ArcNetworkConfig | null {
+  return Object.values(arcNetworks).find(
+    (network) => network?.chain.id === chainId,
+  ) ?? null;
+}
