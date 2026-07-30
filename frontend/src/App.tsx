@@ -129,6 +129,7 @@ export default function App() {
   const [sentTipCount, setSentTipCount] = useState(0);
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSentHistoryLoading, setIsSentHistoryLoading] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
@@ -241,43 +242,6 @@ export default function App() {
       }
 
       try {
-        const sentLogs = await withRpcRetry(() =>
-          publicClient.getContractEvents({
-            address: contractAddress,
-            abi: arcTipJarAbi,
-            eventName: "TipReceived",
-            args: { sender: account },
-            fromBlock: selectedNetwork.contractDeploymentBlock,
-            toBlock: "latest",
-            strict: true,
-          }),
-        );
-        setSentTipCount(sentLogs.length);
-        const latestSentLogs = sentLogs.slice(-8).reverse();
-        const sentTipHistory: Tip[] = [];
-        for (const log of latestSentLogs) {
-          if (!log.blockNumber || !log.transactionHash) continue;
-          const block = await withRpcRetry(() =>
-            publicClient.getBlock({ blockNumber: log.blockNumber! }),
-          );
-          sentTipHistory.push({
-            index: BigInt(log.logIndex ?? 0),
-            sender: log.args.sender,
-            recipient: log.args.recipient,
-            amount: log.args.amount,
-            timestamp: block.timestamp,
-            message: log.args.message,
-            txHash: log.transactionHash,
-          });
-        }
-        setSentTips(sentTipHistory);
-      } catch (error) {
-        setSentTips([]);
-        setSentTipCount(0);
-        setStatus(`Contract connected, but send history could not be loaded: ${getErrorMessage(error)}`);
-      }
-
-      try {
         const visibleClaimCount = claimCount > 8n ? 8n : claimCount;
         const claimIndexes = Array.from(
           { length: Number(visibleClaimCount) },
@@ -324,8 +288,6 @@ export default function App() {
     } catch (error) {
       setIsContractReady(false);
       setReceivedTips([]);
-      setSentTips([]);
-      setSentTipCount(0);
       setClaims([]);
       setStatus(`Could not load contract data: ${getErrorMessage(error)}`);
     } finally {
@@ -345,6 +307,55 @@ export default function App() {
       setWalletBalance(null);
     }
   }, [account, publicClient]);
+
+  const refreshSentHistory = useCallback(async () => {
+    if (!account) {
+      setSentTips([]);
+      setSentTipCount(0);
+      setIsSentHistoryLoading(false);
+      return;
+    }
+
+    setIsSentHistoryLoading(true);
+    try {
+      const sentLogs = await withRpcRetry(() =>
+        publicClient.getContractEvents({
+          address: contractAddress,
+          abi: arcTipJarAbi,
+          eventName: "TipReceived",
+          args: { sender: account },
+          fromBlock: selectedNetwork.contractDeploymentBlock,
+          toBlock: "latest",
+          strict: true,
+        }),
+      );
+      setSentTipCount(sentLogs.length);
+      const latestSentLogs = sentLogs.slice(-8).reverse();
+      const sentTipHistory: Tip[] = [];
+      for (const log of latestSentLogs) {
+        if (!log.blockNumber || !log.transactionHash) continue;
+        const block = await withRpcRetry(() =>
+          publicClient.getBlock({ blockNumber: log.blockNumber! }),
+        );
+        sentTipHistory.push({
+          index: BigInt(log.logIndex ?? 0),
+          sender: log.args.sender,
+          recipient: log.args.recipient,
+          amount: log.args.amount,
+          timestamp: block.timestamp,
+          message: log.args.message,
+          txHash: log.transactionHash,
+        });
+      }
+      setSentTips(sentTipHistory);
+    } catch (error) {
+      setSentTips([]);
+      setSentTipCount(0);
+      setStatus(`Send history could not be loaded: ${getErrorMessage(error)}`);
+    } finally {
+      setIsSentHistoryLoading(false);
+    }
+  }, [account, contractAddress, publicClient, selectedNetwork.contractDeploymentBlock]);
 
   const syncWalletState = useCallback(async () => {
     if (!window.ethereum) return;
@@ -389,6 +400,10 @@ export default function App() {
   useEffect(() => {
     void refreshWalletBalance();
   }, [refreshWalletBalance]);
+
+  useEffect(() => {
+    void refreshSentHistory();
+  }, [refreshSentHistory]);
 
   useEffect(() => {
     const provider = window.ethereum;
@@ -633,7 +648,7 @@ export default function App() {
       setAmount("0.01");
       setAmountPercentage(0);
       setMessage("");
-      await Promise.all([refreshData(), refreshWalletBalance()]);
+      await Promise.all([refreshData(), refreshWalletBalance(), refreshSentHistory()]);
     } catch (error) {
       setStatus(getErrorMessage(error));
     } finally {
@@ -981,7 +996,7 @@ export default function App() {
                 <span>Sent tip history</span>
                 <strong>{sentTipCount}</strong>
               </summary>
-              {isLoading ? (
+              {isSentHistoryLoading ? (
                 <p className="muted">Loading sent tips…</p>
               ) : sentTips.length === 0 ? (
                 <p className="muted">No sent tips yet.</p>
