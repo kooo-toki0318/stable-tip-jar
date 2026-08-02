@@ -13,8 +13,11 @@
     "node": ">=20.19.0"
   },
   "dependencies": {
+    "i18next": "^26.3.6",
+    "i18next-browser-languagedetector": "^8.2.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-i18next": "^17.0.11",
     "viem": "^2.33.3"
   },
   "devDependencies": {

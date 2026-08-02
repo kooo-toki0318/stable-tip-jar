@@ -1,0 +1,211 @@
+{
+  "language": {
+    "label": "言語",
+    "selectAria": "表示言語",
+    "english": "English",
+    "japanese": "日本語"
+  },
+  "brand": {
+    "name": "Arc Tip Jar",
+    "homeAria": "Arc Tip Jar ホーム",
+    "builtOn": "{{network}} 上に構築"
+  },
+  "common": {
+    "loading": "読み込み中",
+    "unavailable": "取得できません",
+    "retry": "再試行",
+    "copied": "コピーしました",
+    "usdcAmount": "{{amount}} USDC",
+    "arcScan": "ArcScan ↗",
+    "viewOnArcScan": "ArcScanで見る ↗"
+  },
+  "header": {
+    "contract": "コントラクト",
+    "github": "GitHub",
+    "networkLabel": "Arcネットワーク",
+    "testnet": "テストネット",
+    "mainnet": "メインネット",
+    "soon": "準備中",
+    "mainnetSoon": "メインネット · 準備中",
+    "connectWallet": "ウォレットを接続",
+    "connecting": "接続中…",
+    "disconnect": "切断",
+    "connectWalletAria": "ウォレットを接続",
+    "disconnectWalletAria": "ウォレット {{address}} を切断",
+    "dismissWalletStatusAria": "ウォレットの通知を閉じる"
+  },
+  "hero": {
+    "connectedTitleLine1": "感謝を届けよう。",
+    "connectedTitleLine2": "オンチェーンに残そう。",
+    "disconnectedTitleLine1": "小さな感謝を届けよう。",
+    "disconnectedTitleLine2": "オンチェーンに残そう。",
+    "connectedDescription": "{{address}} として接続中です。チップを送るか、マイJarを開いて受け取ったチップを管理できます。",
+    "disconnectedDescription": "ネイティブUSDCにメッセージを添えて、Arc上に公開の貢献記録を残せます。"
+  },
+  "onboarding": {
+    "sectionLabel": "使い方",
+    "title": "ウォレットひとつ、メッセージひとつ。ずっとオンチェーンに。",
+    "walletNotConnected": "ウォレット未接続",
+    "walletSupport": "MetaMaskやRabbyなどのウォレットに対応しています。",
+    "connectTitle": "接続",
+    "connectDescription": "ウォレットで接続リクエストを承認します。",
+    "recipientTitle": "送り先を選択",
+    "recipientDescription": "EVMウォレットアドレスを入力します。",
+    "sendTitle": "チップを送信",
+    "sendDescription": "USDCとオンチェーンメッセージを追加します。",
+    "faucetLink": "テスト用USDCが必要ですか？Circle公式Faucetを開く ↗"
+  },
+  "navigation": {
+    "viewsAria": "Tip Jarの表示切り替え",
+    "send": "送る",
+    "myJar": "マイJar"
+  },
+  "jar": {
+    "statisticsAria": "あなたのTip Jarの統計",
+    "myJar": "マイJar",
+    "claimableNow": "今受け取れるチップ",
+    "lifetimeReceived": "累計受取",
+    "currentTip_one": "現在 {{count}} 件",
+    "currentTip_other": "現在 {{count}} 件",
+    "lifetimeTip_one": "累計 {{count}} 件",
+    "lifetimeTip_other": "累計 {{count}} 件",
+    "lifetimeDescription": "Sendフォームの送り先ではなく、現在接続中のウォレットに紐づくデータです。",
+    "loadingTipCountAria": "チップ件数を読み込み中"
+  },
+  "claim": {
+    "claiming": "受取処理中…",
+    "switchToClaim": "{{network}}に切り替えて受け取る",
+    "loadingJar": "Jarを読み込み中…",
+    "jarUnavailable": "Jarを取得できません",
+    "nothingToClaim": "受け取れるチップはありません",
+    "claimAll": "すべてのチップを受け取る",
+    "historyTitle": "受取履歴",
+    "historyLoading": "受取履歴を読み込み中…",
+    "historyEmpty": "受取履歴はまだありません。"
+  },
+  "send": {
+    "sectionLabel": "チップを送る",
+    "title": "Tip Jarを応援",
+    "connectedBalance": "接続中ウォレットの残高",
+    "balanceAvailable": "{{network}}でチップとガス代に利用できます",
+    "jarUnavailableMessage": "Jarデータを取得できないため、送信を一時停止しています。",
+    "tryAgainShortly": "少し待って再試行",
+    "retryJarData": "Jarデータを再取得",
+    "wrongNetworkMessage": "ウォレットが別のネットワークに接続されています。",
+    "switchToNetwork": "{{network}}に切り替える",
+    "amountLabel": "金額",
+    "amountPlaceholder": "0.01",
+    "amountPresetsAria": "チップ金額のプリセット",
+    "spendablePercentage": "送信可能残高に対する割合",
+    "walletPercentageAria": "ウォレット残高の割合",
+    "rangeMinimum": "0%",
+    "rangeMaximum": "100% · ガス代として0.01を残します",
+    "messageLabel": "オンチェーンメッセージ",
+    "messagePlaceholder": "短いメッセージを入力",
+    "messageByteCount": "{{count}} / 280 バイト",
+    "defaultMessage": "Arcでの開発をありがとう！",
+    "recipientLabel": "送り先ウォレット",
+    "useMyAddress": "自分のアドレスを使う",
+    "recipientPlaceholder": "0x…",
+    "invalidRecipient": "有効なEVMウォレットアドレスを入力してください。",
+    "summaryAria": "チップの送信内容",
+    "readyToSend": "送信準備完了",
+    "summaryRecipient": "送り先 {{address}}",
+    "summaryRecipientWithBalance": "送り先 {{address}} · 送信後残高 {{balance}} USDC",
+    "faucetLink": "Circle公式FaucetでテストネットUSDCを入手 ↗",
+    "cta": {
+      "confirming": "チップを確認中…",
+      "loadingContract": "コントラクトを読み込み中…",
+      "jarUnavailable": "Jarを取得できません · 再読み込み",
+      "enterAmount": "金額を入力してください",
+      "insufficientBalance": "送信可能残高が不足しています",
+      "shortenMessage": "メッセージを短くしてください",
+      "enterRecipient": "送り先を入力してください",
+      "checkRecipient": "送り先アドレスを確認してください",
+      "sendAmount": "{{amount}} USDCを送る"
+    },
+    "recipientFeedback": {
+      "selected": "送り先を {{address}} に設定しました。",
+      "hint": "金額とメッセージを確認してから送信してください。"
+    }
+  },
+  "sentHistory": {
+    "title": "送信履歴",
+    "loading": "送信履歴を読み込み中…",
+    "empty": "送信履歴はまだありません。",
+    "to": "送り先 {{address}}"
+  },
+  "latestTips": {
+    "sectionLabel": "マイJAR",
+    "title": "最新のチップ",
+    "empty": "受け取ったチップはまだありません。",
+    "from": "送信者 {{address}}",
+    "directTransfer": "メッセージなしの送金",
+    "copySenderAria": "送信者アドレス {{address}} をコピー",
+    "copySenderTitle": "送信者アドレスをコピー",
+    "senderCopiedTitle": "送信者アドレスをコピーしました",
+    "tipThisPerson": "この人にチップ",
+    "tipThisPersonAria": "{{address}} にチップを送る"
+  },
+  "refresh": {
+    "updatedAt": "{{time}} に更新",
+    "waitingForFirstSync": "最初の同期を待っています",
+    "refreshing": "更新中…",
+    "upToDate": "最新です",
+    "refreshAll": "すべて更新",
+    "loadingOnchainDataAria": "オンチェーンデータを読み込み中"
+  },
+  "transaction": {
+    "copyTitle": "トランザクションハッシュをコピー",
+    "copiedTitle": "コピーしました",
+    "copySendAria": "送信トランザクションハッシュをコピー",
+    "copyClaimAria": "受取トランザクションハッシュをコピー",
+    "copyReceivedAria": "受信トランザクションハッシュをコピー"
+  },
+  "status": {
+    "wallet": {
+      "providerMissing": "MetaMaskまたはRabbyでこのサイトを開くか、EVM対応ウォレットをインストールしてください。",
+      "connectedWithoutSwitch": "{{network}}で接続しました。ネットワークは変更していません。",
+      "connectedAndSwitched": "接続し、{{network}}に切り替えました。",
+      "disconnected": "このdAppからウォレットを切断しました。",
+      "switched": "{{network}}に切り替えました。",
+      "switchFailed": "ネットワークを切り替えられませんでした。{{error}}"
+    },
+    "refresh": {
+      "latestTipsFailed": "最新のチップを更新できませんでした。最後に読み込んだデータを表示しています。{{error}}",
+      "claimHistoryFailed": "受取履歴を更新できませんでした。最後に読み込んだデータを表示しています。{{error}}",
+      "jarDataFailed": "Jarデータを更新できませんでした。最後に読み込んだデータを表示しています。{{error}}",
+      "sentHistoryFailed": "送信履歴を更新できませんでした。{{error}}"
+    },
+    "send": {
+      "walletRequired": "先にウォレットを接続してください。",
+      "wrongNetwork": "チップを送る前に{{network}}へ切り替えてください。",
+      "contractLoading": "コントラクトデータを読み込み中です。更新してからもう一度お試しください。",
+      "invalidRecipient": "有効な送り先ウォレットアドレスを入力してください。",
+      "messageTooLong": "メッセージは280バイト以内にしてください。",
+      "invalidAmount": "0より大きい有効なUSDC金額を入力してください。",
+      "amountExceedsBalance": "金額がガス代を差し引いた送信可能残高を超えています。",
+      "confirmInWallet": "ウォレットでこのトランザクションを確認してください…",
+      "submitted": "トランザクションを送信しました。承認を待っています…",
+      "confirmed": "{{network}}でチップが承認されました。"
+    },
+    "claim": {
+      "walletRequired": "集まったチップを受け取るにはウォレットを接続してください。",
+      "wrongNetwork": "チップを受け取る前に{{network}}へ切り替えてください。",
+      "nothingAvailable": "現在受け取れるチップはありません。",
+      "submitted": "受取トランザクションを送信しました。承認を待っています…",
+      "confirmed": "{{network}}で受取が承認されました。"
+    },
+    "error": {
+      "walletRequestRejected": "ウォレットのリクエストが拒否されました。",
+      "generic": "エラーが発生しました。",
+      "rpcRetriesExhausted": "再試行後もRPCリクエストに失敗しました。",
+      "withDetail": "エラーが発生しました。{{error}}",
+      "copyFailed": "コピーできませんでした。{{error}}"
+    }
+  },
+  "footer": {
+    "testnetDisclaimer": "試験運用中のテストネットdAppです。テストネットUSDCに現実の価値はありません。",
+    "mainnetDescription": "メインネット版Arc Tip Jarです。"
+  }
+}

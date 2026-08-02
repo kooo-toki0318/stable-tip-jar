@@ -1,0 +1,211 @@
+{
+  "language": {
+    "label": "Language",
+    "selectAria": "Display language",
+    "english": "English",
+    "japanese": "日本語"
+  },
+  "brand": {
+    "name": "Arc Tip Jar",
+    "homeAria": "Arc Tip Jar home",
+    "builtOn": "BUILT ON {{network}}"
+  },
+  "common": {
+    "loading": "Loading",
+    "unavailable": "Unavailable",
+    "retry": "Retry",
+    "copied": "Copied",
+    "usdcAmount": "{{amount}} USDC",
+    "arcScan": "ArcScan ↗",
+    "viewOnArcScan": "View on ArcScan ↗"
+  },
+  "header": {
+    "contract": "Contract",
+    "github": "GitHub",
+    "networkLabel": "Arc network",
+    "testnet": "Testnet",
+    "mainnet": "Mainnet",
+    "soon": "Soon",
+    "mainnetSoon": "Mainnet · Soon",
+    "connectWallet": "Connect wallet",
+    "connecting": "Connecting…",
+    "disconnect": "Disconnect",
+    "connectWalletAria": "Connect wallet",
+    "disconnectWalletAria": "Disconnect wallet {{address}}",
+    "dismissWalletStatusAria": "Dismiss wallet status"
+  },
+  "hero": {
+    "connectedTitleLine1": "Send thanks.",
+    "connectedTitleLine2": "Keep it onchain.",
+    "disconnectedTitleLine1": "Send a tiny thank-you.",
+    "disconnectedTitleLine2": "Keep it onchain.",
+    "connectedDescription": "Connected as {{address}}. Send a tip or open My jar to manage what you received.",
+    "disconnectedDescription": "Tip native USDC, attach a message, and leave a public contribution record on Arc."
+  },
+  "onboarding": {
+    "sectionLabel": "HOW IT WORKS",
+    "title": "One wallet. One message. Onchain forever.",
+    "walletNotConnected": "Wallet not connected",
+    "walletSupport": "Works with injected wallets such as MetaMask and Rabby.",
+    "connectTitle": "Connect",
+    "connectDescription": "Approve the request in your wallet.",
+    "recipientTitle": "Choose a recipient",
+    "recipientDescription": "Paste any EVM wallet address.",
+    "sendTitle": "Send a tip",
+    "sendDescription": "Add USDC and an onchain message.",
+    "faucetLink": "Need test USDC? Open the official Circle Faucet ↗"
+  },
+  "navigation": {
+    "viewsAria": "Tip jar views",
+    "send": "Send",
+    "myJar": "My jar"
+  },
+  "jar": {
+    "statisticsAria": "Your tip jar statistics",
+    "myJar": "My jar",
+    "claimableNow": "Claimable now",
+    "lifetimeReceived": "Lifetime received",
+    "currentTip_one": "{{count}} current tip",
+    "currentTip_other": "{{count}} current tips",
+    "lifetimeTip_one": "{{count}} lifetime tip",
+    "lifetimeTip_other": "{{count}} lifetime tips",
+    "lifetimeDescription": "Always tied to your connected wallet—not the recipient in the Send form.",
+    "loadingTipCountAria": "Loading tip count"
+  },
+  "claim": {
+    "claiming": "Claiming…",
+    "switchToClaim": "Switch to {{network}} to claim",
+    "loadingJar": "Loading jar…",
+    "jarUnavailable": "Jar unavailable",
+    "nothingToClaim": "Nothing to claim",
+    "claimAll": "Claim all tips",
+    "historyTitle": "Claim history",
+    "historyLoading": "Loading claim history…",
+    "historyEmpty": "No claims yet."
+  },
+  "send": {
+    "sectionLabel": "SEND A TIP",
+    "title": "Support the jar",
+    "connectedBalance": "Connected wallet balance",
+    "balanceAvailable": "Available on {{network}} for tips and gas",
+    "jarUnavailableMessage": "Jar data is unavailable, so sending is paused.",
+    "tryAgainShortly": "Try again shortly",
+    "retryJarData": "Retry jar data",
+    "wrongNetworkMessage": "Your wallet is connected to another network.",
+    "switchToNetwork": "Switch to {{network}}",
+    "amountLabel": "Amount",
+    "amountPlaceholder": "0.01",
+    "amountPresetsAria": "Tip amount presets",
+    "spendablePercentage": "Spendable balance percentage",
+    "walletPercentageAria": "Wallet balance percentage",
+    "rangeMinimum": "0%",
+    "rangeMaximum": "100% · keeps 0.01 for gas",
+    "messageLabel": "Onchain message",
+    "messagePlaceholder": "Leave a short message",
+    "messageByteCount": "{{count}} / 280 bytes",
+    "defaultMessage": "Thanks for building on Arc!",
+    "recipientLabel": "Recipient wallet",
+    "useMyAddress": "Use my address",
+    "recipientPlaceholder": "0x…",
+    "invalidRecipient": "Enter a valid EVM wallet address.",
+    "summaryAria": "Tip summary",
+    "readyToSend": "Ready to send",
+    "summaryRecipient": "To {{address}}",
+    "summaryRecipientWithBalance": "To {{address}} · Balance after {{balance}} USDC",
+    "faucetLink": "Get testnet USDC from the official Circle Faucet ↗",
+    "cta": {
+      "confirming": "Confirming tip…",
+      "loadingContract": "Loading contract…",
+      "jarUnavailable": "Jar unavailable · Refresh",
+      "enterAmount": "Enter an amount",
+      "insufficientBalance": "Insufficient spendable balance",
+      "shortenMessage": "Shorten the message",
+      "enterRecipient": "Enter a recipient",
+      "checkRecipient": "Check recipient address",
+      "sendAmount": "Send {{amount}} USDC"
+    },
+    "recipientFeedback": {
+      "selected": "Recipient set to {{address}}.",
+      "hint": "Review the amount and message, then send when you’re ready."
+    }
+  },
+  "sentHistory": {
+    "title": "Sent tip history",
+    "loading": "Loading sent tips…",
+    "empty": "No sent tips yet.",
+    "to": "To {{address}}"
+  },
+  "latestTips": {
+    "sectionLabel": "MY JAR",
+    "title": "Latest tips",
+    "empty": "No tips received yet.",
+    "from": "From {{address}}",
+    "directTransfer": "Direct transfer",
+    "copySenderAria": "Copy sender address {{address}}",
+    "copySenderTitle": "Copy sender address",
+    "senderCopiedTitle": "Sender address copied",
+    "tipThisPerson": "Tip this person",
+    "tipThisPersonAria": "Send a tip to {{address}}"
+  },
+  "refresh": {
+    "updatedAt": "Updated {{time}}",
+    "waitingForFirstSync": "Waiting for first sync",
+    "refreshing": "Refreshing…",
+    "upToDate": "Up to date",
+    "refreshAll": "Refresh all",
+    "loadingOnchainDataAria": "Loading onchain data"
+  },
+  "transaction": {
+    "copyTitle": "Copy transaction hash",
+    "copiedTitle": "Copied",
+    "copySendAria": "Copy send transaction hash",
+    "copyClaimAria": "Copy claim transaction hash",
+    "copyReceivedAria": "Copy received transaction hash"
+  },
+  "status": {
+    "wallet": {
+      "providerMissing": "Open this site in MetaMask or Rabby, or install an injected EVM wallet.",
+      "connectedWithoutSwitch": "Connected on {{network}}. Your network was not changed.",
+      "connectedAndSwitched": "Connected and switched to {{network}}.",
+      "disconnected": "Wallet disconnected from this dApp.",
+      "switched": "Switched to {{network}}.",
+      "switchFailed": "Could not switch networks. {{error}}"
+    },
+    "refresh": {
+      "latestTipsFailed": "Latest tips could not be refreshed. Showing the last loaded data. {{error}}",
+      "claimHistoryFailed": "Claim history could not be refreshed. Showing the last loaded data. {{error}}",
+      "jarDataFailed": "Jar data could not be refreshed. Showing the last loaded data. {{error}}",
+      "sentHistoryFailed": "Sent history could not be refreshed. {{error}}"
+    },
+    "send": {
+      "walletRequired": "Connect your wallet first.",
+      "wrongNetwork": "Switch to {{network}} before sending a tip.",
+      "contractLoading": "Contract data is still loading. Refresh and try again.",
+      "invalidRecipient": "Enter a valid recipient wallet address.",
+      "messageTooLong": "The message must be 280 bytes or fewer.",
+      "invalidAmount": "Enter a valid USDC amount greater than zero.",
+      "amountExceedsBalance": "The amount exceeds your spendable balance after the gas reserve.",
+      "confirmInWallet": "Confirm this transaction in your wallet…",
+      "submitted": "Transaction submitted. Waiting for confirmation…",
+      "confirmed": "Tip confirmed on {{network}}."
+    },
+    "claim": {
+      "walletRequired": "Connect your wallet to claim its collected tips.",
+      "wrongNetwork": "Switch to {{network}} before claiming tips.",
+      "nothingAvailable": "There are no tips available to claim.",
+      "submitted": "Claim submitted. Waiting for confirmation…",
+      "confirmed": "Claim confirmed on {{network}}."
+    },
+    "error": {
+      "walletRequestRejected": "The wallet request was rejected.",
+      "generic": "Something went wrong.",
+      "rpcRetriesExhausted": "RPC request failed after retries.",
+      "withDetail": "Something went wrong. {{error}}",
+      "copyFailed": "Could not copy. {{error}}"
+    }
+  },
+  "footer": {
+    "testnetDisclaimer": "Experimental testnet dApp. Testnet USDC has no real-world value.",
+    "mainnetDescription": "Arc Tip Jar on Mainnet."
+  }
+}

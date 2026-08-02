@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   createPublicClient,
   createWalletClient,
@@ -14,6 +15,14 @@ import {
   type Hash,
 } from "viem";
 import { arcTipJarAbi } from "./abi";
+import {
+  formatCount,
+  formatEpochSeconds,
+  formatPercentage,
+  formatUpdatedTime,
+  formatUsdc,
+} from "./formatters";
+import { getSupportedLanguage } from "./i18n";
 import {
   arcNetworks,
   getArcNetworkByChainId,
@@ -55,6 +64,17 @@ type JarStats = {
   claimCount: bigint;
 };
 
+type UiMessage = {
+  key: string;
+  values?: Record<string, string | number>;
+};
+
+type ClipboardFeedback = {
+  targetId: string;
+  message: UiMessage;
+  success: boolean;
+};
+
 const emptyStats: JarStats = {
   balance: 0n,
   totalReceived: 0n,
@@ -73,20 +93,20 @@ function shortHash(hash: Hash): string {
 }
 
 function CopyIcon({ copied }: { copied: boolean }) {
+  if (copied) {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16">
+        <path d="m5 12.5 4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16">
-      <title>{copied ? "Copied" : "Copy transaction hash"}</title>
       <rect x="8" y="8" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
       <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
-}
-
-function formatUsdc(value: bigint): string {
-  const numeric = Number(formatUnits(value, 18));
-  return numeric.toLocaleString(undefined, {
-    maximumFractionDigits: 6,
-  });
 }
 
 const RPC_MIN_INTERVAL_MS = 600;
@@ -185,17 +205,28 @@ function createCachedLoader<T>(load: () => Promise<T>) {
   };
 }
 
-function getErrorMessage(error: unknown): string {
+function getErrorUiMessage(
+  error: unknown,
+  fallbackKey = "status.error.withDetail",
+): UiMessage {
   if (error instanceof Error) {
-    if (error.message.includes("User rejected")) {
-      return "The wallet request was rejected.";
+    const detail = error.message.split("\n")[0];
+    const normalizedDetail = detail.toLowerCase();
+    if (
+      normalizedDetail.includes("user rejected") ||
+      normalizedDetail.includes("user denied")
+    ) {
+      return { key: "status.error.walletRequestRejected" };
     }
-    return error.message.split("\n")[0];
+    return { key: fallbackKey, values: { error: detail } };
   }
-  return "Something went wrong.";
+  return { key: "status.error.generic" };
 }
 
 export default function App() {
+  const { t, i18n } = useTranslation();
+  const language = getSupportedLanguage(i18n.resolvedLanguage ?? i18n.language);
+  const locale = language === "ja" ? "ja-JP" : "en-US";
   const [account, setAccount] = useState<Address | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
   const [selectedNetworkKey, setSelectedNetworkKey] =
@@ -203,7 +234,7 @@ export default function App() {
   const [recipientInput, setRecipientInput] = useState("");
   const [amount, setAmount] = useState("0.01");
   const [amountPercentage, setAmountPercentage] = useState(0);
-  const [message, setMessage] = useState("Thanks for building on Arc!");
+  const [message, setMessage] = useState(() => t("send.defaultMessage"));
   const [stats, setStats] = useState<JarStats>(emptyStats);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
   const [receivedTips, setReceivedTips] = useState<Tip[]>([]);
@@ -216,11 +247,13 @@ export default function App() {
   const [isSending, setIsSending] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [isContractReady, setIsContractReady] = useState(false);
-  const [walletStatus, setWalletStatus] = useState("");
-  const [jarStatus, setJarStatus] = useState("");
-  const [sendStatus, setSendStatus] = useState("");
-  const [sentHistoryError, setSentHistoryError] = useState("");
-  const [claimStatus, setClaimStatus] = useState("");
+  const [walletStatus, setWalletStatus] = useState<UiMessage | null>(null);
+  const [jarStatus, setJarStatus] = useState<UiMessage | null>(null);
+  const [sendStatus, setSendStatus] = useState<UiMessage | null>(null);
+  const [sentHistoryError, setSentHistoryError] = useState<UiMessage | null>(null);
+  const [claimStatus, setClaimStatus] = useState<UiMessage | null>(null);
+  const [recipientNotice, setRecipientNotice] = useState<UiMessage | null>(null);
+  const [isRecipientHighlighted, setIsRecipientHighlighted] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [mobileView, setMobileView] = useState<"send" | "jar">("send");
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
@@ -228,7 +261,16 @@ export default function App() {
   const refreshAllPromiseRef = useRef<Promise<void> | null>(null);
   const [sendTxHash, setSendTxHash] = useState<Hash | null>(null);
   const [claimTxHash, setClaimTxHash] = useState<Hash | null>(null);
-  const [copiedHash, setCopiedHash] = useState<Hash | null>(null);
+  const [clipboardFeedback, setClipboardFeedback] =
+    useState<ClipboardFeedback | null>(null);
+  const copiedTargetId = clipboardFeedback?.success
+    ? clipboardFeedback.targetId
+    : null;
+  const amountInputRef = useRef<HTMLInputElement>(null);
+  const networkSwitchButtonRef = useRef<HTMLButtonElement>(null);
+  const recipientInputRef = useRef<HTMLInputElement>(null);
+  const clipboardFeedbackTimeoutRef = useRef<number | null>(null);
+  const recipientHighlightTimeoutRef = useRef<number | null>(null);
 
   const selectedNetwork = arcNetworks[selectedNetworkKey] ?? arcNetworks.testnet!;
   const { chain, contractAddress } = selectedNetwork;
@@ -296,22 +338,22 @@ export default function App() {
     recipientAddress !== null &&
     messageBytes <= 280;
   const sendButtonLabel = isSending
-    ? "Confirming tip…"
+    ? t("send.cta.confirming")
     : !isContractReady
       ? isLoading
-        ? "Loading contract…"
-        : "Jar unavailable · Refresh"
+        ? t("send.cta.loadingContract")
+        : t("send.cta.jarUnavailable")
       : parsedTipAmount === null
-        ? "Enter an amount"
+        ? t("send.cta.enterAmount")
         : exceedsSpendableBalance
-          ? "Insufficient spendable balance"
+          ? t("send.cta.insufficientBalance")
           : messageBytes > 280
-            ? "Shorten the message"
+            ? t("send.cta.shortenMessage")
             : !recipientInput
-              ? "Enter a recipient"
+              ? t("send.cta.enterRecipient")
               : !recipientAddress
-                ? "Check recipient address"
-                : `Send ${formatUsdc(parsedTipAmount)} USDC`;
+                ? t("send.cta.checkRecipient")
+                : t("send.cta.sendAmount", { amount: formatUsdc(parsedTipAmount, locale) });
   const remainingAfterTip =
     walletBalance !== null && parsedTipAmount !== null && walletBalance >= parsedTipAmount
       ? walletBalance - parsedTipAmount
@@ -322,7 +364,7 @@ export default function App() {
     const requestContext = activeDataContextRef.current;
     const isCurrentRequest = () => activeDataContextRef.current === requestContext;
     setIsLoading(true);
-    setJarStatus("");
+    setJarStatus(null);
     let refreshSucceeded = true;
     try {
       const jarAddress = account;
@@ -390,7 +432,7 @@ export default function App() {
       } catch (error) {
         refreshSucceeded = false;
         if (isCurrentRequest()) {
-          setJarStatus(`Latest tips could not be refreshed. Showing the last loaded data. ${getErrorMessage(error)}`);
+          setJarStatus(getErrorUiMessage(error, "status.refresh.latestTipsFailed"));
         }
       }
 
@@ -432,14 +474,14 @@ export default function App() {
       } catch (error) {
         refreshSucceeded = false;
         if (isCurrentRequest()) {
-          setJarStatus(`Claim history could not be refreshed. Showing the last loaded data. ${getErrorMessage(error)}`);
+          setJarStatus(getErrorUiMessage(error, "status.refresh.claimHistoryFailed"));
         }
       }
       if (refreshSucceeded && isCurrentRequest()) setLastUpdatedAt(new Date());
     } catch (error) {
       refreshSucceeded = false;
       if (isCurrentRequest()) {
-        setJarStatus(`Jar data could not be refreshed. Showing the last loaded data. ${getErrorMessage(error)}`);
+        setJarStatus(getErrorUiMessage(error, "status.refresh.jarDataFailed"));
       }
     } finally {
       if (isCurrentRequest()) setIsLoading(false);
@@ -467,13 +509,13 @@ export default function App() {
       setSentTips([]);
       setSentTipCount(0);
       setIsSentHistoryLoading(false);
-      setSentHistoryError("");
+      setSentHistoryError(null);
       return;
     }
 
     const requestContext = activeDataContextRef.current;
     setIsSentHistoryLoading(true);
-    setSentHistoryError("");
+    setSentHistoryError(null);
     try {
       const sentLogs = (await contractEventLoader.load()).filter(
         (log) =>
@@ -503,7 +545,7 @@ export default function App() {
       setSentTips(sentTipHistory);
     } catch (error) {
       if (activeDataContextRef.current === requestContext) {
-        setSentHistoryError(`Sent history could not be refreshed. ${getErrorMessage(error)}`);
+        setSentHistoryError(getErrorUiMessage(error, "status.refresh.sentHistoryFailed"));
       }
     } finally {
       if (activeDataContextRef.current === requestContext) {
@@ -525,8 +567,8 @@ export default function App() {
           current === cooldownUntil ? 0 : current,
         );
       }, 10_000);
-      setJarStatus("");
-      setSentHistoryError("");
+      setJarStatus(null);
+      setSentHistoryError(null);
       contractEventLoader.invalidate();
       await Promise.all([
         refreshData(),
@@ -572,15 +614,33 @@ export default function App() {
   }, [syncWalletState]);
 
   useEffect(() => {
+    document.documentElement.lang = language;
+    document.title = t("brand.name");
+    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (description) description.content = t("hero.disconnectedDescription");
+  }, [language, t]);
+
+  useEffect(() => () => {
+    if (clipboardFeedbackTimeoutRef.current !== null) {
+      globalThis.clearTimeout(clipboardFeedbackTimeoutRef.current);
+    }
+    if (recipientHighlightTimeoutRef.current !== null) {
+      globalThis.clearTimeout(recipientHighlightTimeoutRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
     setStats(emptyStats);
     setWalletBalance(null);
     setReceivedTips([]);
     setClaims([]);
-    setJarStatus("");
-    setSendStatus("");
+    setJarStatus(null);
+    setSendStatus(null);
     setSendTxHash(null);
+    setRecipientNotice(null);
+    setIsRecipientHighlighted(false);
     setIsSending(false);
-    setClaimStatus("");
+    setClaimStatus(null);
     setClaimTxHash(null);
     setIsClaiming(false);
     setLastUpdatedAt(null);
@@ -602,7 +662,7 @@ export default function App() {
   useEffect(() => {
     setSentTips([]);
     setSentTipCount(0);
-    setSentHistoryError("");
+    setSentHistoryError(null);
     setSendTxHash(null);
     if (account) void refreshSentHistory();
   }, [account, refreshSentHistory, selectedNetworkKey]);
@@ -620,8 +680,10 @@ export default function App() {
       }
       setAccount(accounts[0] ?? null);
       setRecipientInput(accounts[0] ?? "");
-      setSendStatus("");
-      setWalletStatus("");
+      setRecipientNotice(null);
+      setIsRecipientHighlighted(false);
+      setSendStatus(null);
+      setWalletStatus(null);
     };
 
     const handleChainChanged = (...args: unknown[]) => {
@@ -642,12 +704,12 @@ export default function App() {
 
   async function connectWallet() {
     if (!window.ethereum) {
-      setWalletStatus("Open this site in MetaMask or Rabby, or install an injected EVM wallet.");
+      setWalletStatus({ key: "status.wallet.providerMissing" });
       return;
     }
 
     setIsConnecting(true);
-    setWalletStatus("");
+    setWalletStatus(null);
     try {
       const accounts = (await window.ethereum.request({
         method: "eth_requestAccounts",
@@ -666,13 +728,19 @@ export default function App() {
       const detectedNetwork = getArcNetworkByChainId(walletChainId);
       if (detectedNetwork) {
         setSelectedNetworkKey(detectedNetwork.key);
-        setWalletStatus(`Connected on ${detectedNetwork.chain.name}. Your network was not changed.`);
+        setWalletStatus({
+          key: "status.wallet.connectedWithoutSwitch",
+          values: { network: detectedNetwork.chain.name },
+        });
       } else {
         await switchToNetwork(selectedNetwork);
-        setWalletStatus(`Connected and switched to ${selectedNetwork.chain.name}.`);
+        setWalletStatus({
+          key: "status.wallet.connectedAndSwitched",
+          values: { network: selectedNetwork.chain.name },
+        });
       }
     } catch (error) {
-      setWalletStatus(getErrorMessage(error));
+      setWalletStatus(getErrorUiMessage(error));
     } finally {
       setIsConnecting(false);
     }
@@ -698,13 +766,15 @@ export default function App() {
       setAccount(null);
       setChainId(null);
       setRecipientInput("");
+      setRecipientNotice(null);
+      setIsRecipientHighlighted(false);
       setSendTxHash(null);
       setClaimTxHash(null);
-      setSendStatus("");
-      setClaimStatus("");
-      setJarStatus("");
-      setSentHistoryError("");
-      setWalletStatus("Wallet disconnected from this dApp.");
+      setSendStatus(null);
+      setClaimStatus(null);
+      setJarStatus(null);
+      setSentHistoryError(null);
+      setWalletStatus({ key: "status.wallet.disconnected" });
     }
   }
   async function switchToNetwork(network: ArcNetworkConfig) {
@@ -744,12 +814,15 @@ export default function App() {
   }
 
   async function switchToSelectedNetwork() {
-    setWalletStatus("");
+    setWalletStatus(null);
     try {
       await switchToNetwork(selectedNetwork);
-      setWalletStatus(`Switched to ${selectedNetwork.chain.name}.`);
+      setWalletStatus({
+        key: "status.wallet.switched",
+        values: { network: selectedNetwork.chain.name },
+      });
     } catch (error) {
-      setWalletStatus(`Could not switch networks. ${getErrorMessage(error)}`);
+      setWalletStatus(getErrorUiMessage(error, "status.wallet.switchFailed"));
     }
   }
 
@@ -758,16 +831,19 @@ export default function App() {
     if (!nextNetwork) return;
 
     setSelectedNetworkKey(nextKey);
-    setWalletStatus("");
-    setSendStatus("");
+    setWalletStatus(null);
+    setSendStatus(null);
     setSendTxHash(null);
     setClaimTxHash(null);
     if (account && chainId !== nextNetwork.chain.id) {
       try {
         await switchToNetwork(nextNetwork);
-        setWalletStatus(`Switched to ${nextNetwork.chain.name}.`);
+        setWalletStatus({
+          key: "status.wallet.switched",
+          values: { network: nextNetwork.chain.name },
+        });
       } catch (error) {
-        setWalletStatus(`Could not switch networks. ${getErrorMessage(error)}`);
+        setWalletStatus(getErrorUiMessage(error, "status.wallet.switchFailed"));
       }
     }
   }
@@ -792,57 +868,145 @@ export default function App() {
     setAmount(formatUnits(value, 18));
   }
 
+  function clearRecipientFeedback() {
+    setRecipientNotice(null);
+    setIsRecipientHighlighted(false);
+  }
+
   function useConnectedWalletAsRecipient() {
     if (!account) return;
     setRecipientInput(account);
-    setSendStatus("");
+    clearRecipientFeedback();
+    setSendStatus(null);
   }
 
-  async function copyTransactionHash(hash: Hash) {
-    await navigator.clipboard.writeText(hash);
-    setCopiedHash(hash);
-    window.setTimeout(() => setCopiedHash((current) => (current === hash ? null : current)), 1500);
+  async function copyToClipboard(
+    value: string,
+    targetId: string,
+    successKey: string,
+  ) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setClipboardFeedback({
+        targetId,
+        message: { key: successKey },
+        success: true,
+      });
+      if (clipboardFeedbackTimeoutRef.current !== null) {
+        globalThis.clearTimeout(clipboardFeedbackTimeoutRef.current);
+      }
+      clipboardFeedbackTimeoutRef.current = globalThis.setTimeout(() => {
+        setClipboardFeedback((current) =>
+          current?.targetId === targetId ? null : current,
+        );
+        clipboardFeedbackTimeoutRef.current = null;
+      }, 1_500);
+    } catch (error) {
+      setClipboardFeedback({
+        targetId,
+        message: getErrorUiMessage(error, "status.error.copyFailed"),
+        success: false,
+      });
+      if (clipboardFeedbackTimeoutRef.current !== null) {
+        globalThis.clearTimeout(clipboardFeedbackTimeoutRef.current);
+      }
+      clipboardFeedbackTimeoutRef.current = globalThis.setTimeout(() => {
+        setClipboardFeedback((current) =>
+          current?.targetId === targetId ? null : current,
+        );
+        clipboardFeedbackTimeoutRef.current = null;
+      }, 3_000);
+    }
+  }
+
+  function prepareTipBack(sender: Address) {
+    if (!account || sender.toLowerCase() === account.toLowerCase()) return;
+
+    setRecipientInput(sender);
+    setRecipientNotice({
+      key: "send.recipientFeedback.selected",
+      values: { address: shortAddress(sender) },
+    });
+    setSendStatus(null);
+    setSendTxHash(null);
+    setMobileView("send");
+    setIsRecipientHighlighted(false);
+
+    globalThis.requestAnimationFrame(() => {
+      setIsRecipientHighlighted(true);
+      if (recipientHighlightTimeoutRef.current !== null) {
+        globalThis.clearTimeout(recipientHighlightTimeoutRef.current);
+      }
+      recipientHighlightTimeoutRef.current = globalThis.setTimeout(() => {
+        setIsRecipientHighlighted(false);
+        recipientHighlightTimeoutRef.current = null;
+      }, 1_500);
+
+      globalThis.requestAnimationFrame(() => {
+        const amountInput = amountInputRef.current;
+        const nextAction = amountInput ?? networkSwitchButtonRef.current;
+        if (!nextAction) return;
+
+        nextAction.focus({ preventScroll: true });
+        amountInput?.select();
+        const rect = nextAction.getBoundingClientRect();
+        const topOffset = globalThis.innerWidth <= 820 ? 150 : 96;
+        const isOutsideView =
+          rect.top < topOffset || rect.bottom > globalThis.innerHeight - 24;
+        if (isOutsideView) {
+          const reduceMotion = globalThis.matchMedia(
+            "(prefers-reduced-motion: reduce)",
+          ).matches;
+          nextAction.scrollIntoView({
+            behavior: reduceMotion ? "auto" : "smooth",
+            block: "center",
+          });
+        }
+      });
+    });
   }
 
   async function sendTip(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSendStatus("");
+    setSendStatus(null);
     setSendTxHash(null);
 
     if (!window.ethereum || !account) {
-      setSendStatus("Connect your wallet first.");
+      setSendStatus({ key: "status.send.walletRequired" });
       return;
     }
     if (!isCorrectNetwork) {
-      setSendStatus(`Switch to ${chain.name} before sending a tip.`);
+      setSendStatus({ key: "status.send.wrongNetwork", values: { network: chain.name } });
       return;
     }
     if (!isContractReady) {
-      setSendStatus("Contract data is still loading. Refresh and try again.");
+      setSendStatus({ key: "status.send.contractLoading" });
       return;
     }
     if (!recipientAddress) {
-      setSendStatus("Enter a valid recipient wallet address.");
+      setSendStatus({ key: "status.send.invalidRecipient" });
       return;
     }
     if (messageBytes > 280) {
-      setSendStatus("The message must be 280 bytes or fewer.");
+      setSendStatus({ key: "status.send.messageTooLong" });
       return;
     }
     if (parsedTipAmount === null) {
-      setSendStatus("Enter a valid USDC amount greater than zero.");
+      setSendStatus({ key: "status.send.invalidAmount" });
       return;
     }
     if (exceedsSpendableBalance) {
-      setSendStatus("The amount exceeds your spendable balance after the gas reserve.");
+      setSendStatus({ key: "status.send.amountExceedsBalance" });
       return;
     }
 
+    setRecipientNotice(null);
+    setIsRecipientHighlighted(false);
     const operationContext = activeDataContextRef.current;
     const isCurrentOperation = () =>
       activeDataContextRef.current === operationContext;
     setIsSending(true);
-    setSendStatus("Confirm this transaction in your wallet…");
+    setSendStatus({ key: "status.send.confirmInWallet" });
     try {
       const walletClient = createWalletClient({
         account,
@@ -860,35 +1024,35 @@ export default function App() {
 
       if (!isCurrentOperation()) return;
       setSendTxHash(hash);
-      setSendStatus("Transaction submitted. Waiting for confirmation…");
+      setSendStatus({ key: "status.send.submitted" });
       await publicClient.waitForTransactionReceipt({ hash });
       if (!isCurrentOperation()) return;
-      setSendStatus(`Tip confirmed on ${chain.name}.`);
+      setSendStatus({ key: "status.send.confirmed", values: { network: chain.name } });
       setAmount("0.01");
       setAmountPercentage(0);
       setMessage("");
       contractEventLoader.invalidate();
       await Promise.all([refreshData(), refreshWalletBalance(), refreshSentHistory()]);
     } catch (error) {
-      if (isCurrentOperation()) setSendStatus(getErrorMessage(error));
+      if (isCurrentOperation()) setSendStatus(getErrorUiMessage(error));
     } finally {
       if (isCurrentOperation()) setIsSending(false);
     }
   }
   async function claimTips() {
-    setClaimStatus("");
+    setClaimStatus(null);
     setClaimTxHash(null);
 
     if (!window.ethereum || !account) {
-      setClaimStatus("Connect your wallet to claim its collected tips.");
+      setClaimStatus({ key: "status.claim.walletRequired" });
       return;
     }
     if (!isCorrectNetwork) {
-      setClaimStatus(`Switch to ${chain.name} before claiming tips.`);
+      setClaimStatus({ key: "status.claim.wrongNetwork", values: { network: chain.name } });
       return;
     }
     if (stats.balance === 0n) {
-      setClaimStatus("There are no tips available to claim.");
+      setClaimStatus({ key: "status.claim.nothingAvailable" });
       return;
     }
 
@@ -910,14 +1074,14 @@ export default function App() {
 
       if (!isCurrentOperation()) return;
       setClaimTxHash(hash);
-      setClaimStatus("Claim submitted. Waiting for confirmation…");
+      setClaimStatus({ key: "status.claim.submitted" });
       await publicClient.waitForTransactionReceipt({ hash });
       if (!isCurrentOperation()) return;
-      setClaimStatus(`Claim confirmed on ${chain.name}.`);
+      setClaimStatus({ key: "status.claim.confirmed", values: { network: chain.name } });
       contractEventLoader.invalidate();
       await Promise.all([refreshData(), refreshWalletBalance()]);
     } catch (error) {
-      if (isCurrentOperation()) setClaimStatus(getErrorMessage(error));
+      if (isCurrentOperation()) setClaimStatus(getErrorUiMessage(error));
     } finally {
       if (isCurrentOperation()) setIsClaiming(false);
     }
@@ -925,234 +1089,877 @@ export default function App() {
 
   return (
     <>
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {clipboardFeedback
+          ? t(clipboardFeedback.message.key, clipboardFeedback.message.values)
+          : ""}
+      </span>
+
       <header className="site-header">
         <div className="topbar page-shell">
-        <a className="brand" href="#top" aria-label="Arc Tip Jar home">
-          <span className="brand-mark">A</span>
-          <span>Arc Tip Jar</span>
-        </a>
-        <div className="header-actions">
-          <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
-            Contract
+          <a className="brand" href="#top" aria-label={t("brand.homeAria")}>
+            <span className="brand-mark">A</span>
+            <span>{t("brand.name")}</span>
           </a>
-          <label className="network-select-label">
-            <span className="sr-only">Arc network</span>
-            <select
-              aria-label="Arc network"
-              value={selectedNetworkKey}
-              onChange={(event) =>
-                void selectNetwork(event.target.value as ArcNetworkKey)
-              }
+
+          <div className="header-actions">
+            <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
+              {t("header.contract")}
+            </a>
+
+            <label className="network-select-label">
+              <span className="sr-only">{t("header.networkLabel")}</span>
+              <select
+                aria-label={t("header.networkLabel")}
+                value={selectedNetworkKey}
+                onChange={(event) =>
+                  void selectNetwork(event.target.value as ArcNetworkKey)
+                }
+              >
+                <option value="testnet">{t("header.testnet")}</option>
+                <option value="mainnet" disabled={!arcNetworks.mainnet}>
+                  {arcNetworks.mainnet
+                    ? t("header.mainnet")
+                    : t("header.mainnetSoon")}
+                </option>
+              </select>
+            </label>
+
+            <label className="language-select-label">
+              <span className="sr-only">{t("language.label")}</span>
+              <select
+                aria-label={t("language.selectAria")}
+                value={language}
+                onChange={(event) => void i18n.changeLanguage(event.target.value)}
+              >
+                <option value="ja">JA</option>
+                <option value="en">EN</option>
+              </select>
+            </label>
+
+            <a
+              href="https://github.com/kooo-toki0318/arc-tip-jar"
+              target="_blank"
+              rel="noreferrer"
             >
-              <option value="testnet">Testnet</option>
-              <option value="mainnet" disabled={!arcNetworks.mainnet}>
-                Mainnet{arcNetworks.mainnet ? "" : " · Soon"}
-              </option>
-            </select>
-          </label>
-          <a
-            href="https://github.com/kooo-toki0318/arc-tip-jar"
-            target="_blank"
-            rel="noreferrer"
-          >
-            GitHub
-          </a>
-          <button
-            className={"wallet-button " + (account ? "connected" : "")}
-            type="button"
-            onClick={account ? disconnectWallet : connectWallet}
-            disabled={isConnecting}
-            aria-label={account ? `Disconnect wallet ${account}` : "Connect wallet"}
-            title={account ?? undefined}
-          >
-            {account
-              ? (
-                  <>
-                    <span className="wallet-address">{shortAddress(account)}</span>
-                    <span className="wallet-separator" aria-hidden="true">·</span>
-                    <span className="wallet-action">Disconnect</span>
-                  </>
-                )
-              : isConnecting
-                ? "Connecting…"
-                : "Connect wallet"}
-          </button>
-        </div>
+              {t("header.github")}
+            </a>
+
+            <button
+              className={"wallet-button " + (account ? "connected" : "")}
+              type="button"
+              onClick={account ? disconnectWallet : connectWallet}
+              disabled={isConnecting}
+              aria-label={
+                account
+                  ? t("header.disconnectWalletAria", { address: account })
+                  : t("header.connectWalletAria")
+              }
+              title={account ?? undefined}
+            >
+              {account ? (
+                <>
+                  <span className="wallet-address">{shortAddress(account)}</span>
+                  <span className="wallet-separator" aria-hidden="true">·</span>
+                  <span className="wallet-action">{t("header.disconnect")}</span>
+                </>
+              ) : isConnecting ? (
+                t("header.connecting")
+              ) : (
+                t("header.connectWallet")
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="page-shell">
-      {walletStatus && (
-        <div className="wallet-notice" role="status" aria-live="polite">
-          <span>{walletStatus}</span>
-          <button
-            type="button"
-            aria-label="Dismiss wallet status"
-            onClick={() => setWalletStatus("")}
-          >
-            ×
-          </button>
-        </div>
-      )}
-
-      <section id="top" className={"hero " + (account ? "hero-connected" : "")}>
-        <div className="eyebrow">BUILT ON {chain.name.toUpperCase()}</div>
-        <h1>
-          {account ? <><span>Send thanks.</span><br />Keep it onchain.</> : <>Send a tiny thank-you.<br />Keep it onchain.</>}
-        </h1>
-        <p className="hero-copy">
-          {account
-            ? `Connected as ${shortAddress(account)}. Send a tip or open My jar to manage what you received.`
-            : "Tip native USDC, attach a message, and leave a public contribution record on Arc."}
-        </p>
-      </section>
-
-      {!account ? (
-        <section className="onboarding-panel" aria-labelledby="onboarding-title">
-          <div className="onboarding-heading">
-            <div>
-              <span className="section-label">HOW IT WORKS</span>
-              <h2 id="onboarding-title">One wallet. One message. Onchain forever.</h2>
-            </div>
-            <span className="network-pill neutral">Wallet not connected</span>
-          </div>
-          <div className="onboarding-primary">
+        {walletStatus && (
+          <div className="wallet-notice" role="status" aria-live="polite">
+            <span>{t(walletStatus.key, walletStatus.values)}</span>
             <button
-              className="onboarding-connect"
               type="button"
-              onClick={() => void connectWallet()}
-              disabled={isConnecting}
+              aria-label={t("header.dismissWalletStatusAria")}
+              onClick={() => setWalletStatus(null)}
             >
-              {isConnecting ? "Connecting…" : "Connect wallet"}
+              ×
             </button>
-            <small>Works with injected wallets such as MetaMask and Rabby.</small>
           </div>
-          <ol className="onboarding-steps">
-            <li>
-              <span>1</span>
-              <div><strong>Connect</strong><small>Approve the request in your wallet.</small></div>
-            </li>
-            <li>
-              <span>2</span>
-              <div><strong>Choose a recipient</strong><small>Paste any EVM wallet address.</small></div>
-            </li>
-            <li>
-              <span>3</span>
-              <div><strong>Send a tip</strong><small>Add USDC and an onchain message.</small></div>
-            </li>
-          </ol>
-          {selectedNetwork.faucetUrl && (
-            <a
-              className="onboarding-faucet"
-              href={selectedNetwork.faucetUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Need test USDC? Open the official Circle Faucet ↗
-            </a>
-          )}
+        )}
+
+        <section id="top" className={"hero " + (account ? "hero-connected" : "")}>
+          <div className="eyebrow">
+            {t("brand.builtOn", { network: chain.name.toUpperCase() })}
+          </div>
+          <h1>
+            {account ? (
+              <>
+                <span>{t("hero.connectedTitleLine1")}</span>
+                <br />
+                {t("hero.connectedTitleLine2")}
+              </>
+            ) : (
+              <>
+                {t("hero.disconnectedTitleLine1")}
+                <br />
+                {t("hero.disconnectedTitleLine2")}
+              </>
+            )}
+          </h1>
+          <p className="hero-copy">
+            {account
+              ? t("hero.connectedDescription", {
+                  address: shortAddress(account),
+                })
+              : t("hero.disconnectedDescription")}
+          </p>
         </section>
-      ) : (
-        <>
-          <div className="mobile-tabs" aria-label="Tip jar views">
-            <button
-              type="button"
-              aria-pressed={mobileView === "send"}
-              className={mobileView === "send" ? "active" : ""}
-              onClick={() => setMobileView("send")}
-            >
-              Send
-            </button>
-            <button
-              type="button"
-              aria-pressed={mobileView === "jar"}
-              className={mobileView === "jar" ? "active" : ""}
-              onClick={() => setMobileView("jar")}
-            >
-              My jar
-            </button>
-          </div>
 
-          <div className="connected-dashboard">
-            <section
-              id="jar-summary"
-              className={"stats-grid mobile-jar-pane " + (mobileView !== "jar" ? "mobile-pane-inactive" : "")}
-              aria-label="Your tip jar statistics"
-            >
-              <article className="stat-card claim-card">
-                <div className="stat-heading-row">
-                  <span>Claimable now</span>
-                  <span className="owner-chip">{shortAddress(account)}</span>
+        {!account ? (
+          <section className="onboarding-panel" aria-labelledby="onboarding-title">
+            <div className="onboarding-heading">
+              <div>
+                <span className="section-label">{t("onboarding.sectionLabel")}</span>
+                <h2 id="onboarding-title">{t("onboarding.title")}</h2>
+              </div>
+              <span className="network-pill neutral">
+                {t("onboarding.walletNotConnected")}
+              </span>
+            </div>
+
+            <div className="onboarding-primary">
+              <button
+                className="onboarding-connect"
+                type="button"
+                onClick={() => void connectWallet()}
+                disabled={isConnecting}
+              >
+                {isConnecting
+                  ? t("header.connecting")
+                  : t("header.connectWallet")}
+              </button>
+              <small>{t("onboarding.walletSupport")}</small>
+            </div>
+
+            <ol className="onboarding-steps">
+              <li>
+                <span>1</span>
+                <div>
+                  <strong>{t("onboarding.connectTitle")}</strong>
+                  <small>{t("onboarding.connectDescription")}</small>
                 </div>
-                <strong>
-                  {isLoading && !isContractReady ? <span className="skeleton-value" aria-label="Loading" /> : formatUsdc(stats.balance)} USDC
-                </strong>
-                <small className="tip-count-detail">
-                  {isLoading && !isContractReady ? (
-                    <span className="skeleton-text" aria-label="Loading tip count" />
-                  ) : (
-                    <><strong>{stats.claimableCount.toString()}</strong> current tip{stats.claimableCount === 1n ? "" : "s"}</>
+              </li>
+              <li>
+                <span>2</span>
+                <div>
+                  <strong>{t("onboarding.recipientTitle")}</strong>
+                  <small>{t("onboarding.recipientDescription")}</small>
+                </div>
+              </li>
+              <li>
+                <span>3</span>
+                <div>
+                  <strong>{t("onboarding.sendTitle")}</strong>
+                  <small>{t("onboarding.sendDescription")}</small>
+                </div>
+              </li>
+            </ol>
+
+            {selectedNetwork.faucetUrl && (
+              <a
+                className="onboarding-faucet"
+                href={selectedNetwork.faucetUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t("onboarding.faucetLink")}
+              </a>
+            )}
+          </section>
+        ) : (
+          <>
+            <div className="mobile-tabs" aria-label={t("navigation.viewsAria")}>
+              <button
+                type="button"
+                aria-pressed={mobileView === "send"}
+                className={mobileView === "send" ? "active" : ""}
+                onClick={() => setMobileView("send")}
+              >
+                {t("navigation.send")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={mobileView === "jar"}
+                className={mobileView === "jar" ? "active" : ""}
+                onClick={() => setMobileView("jar")}
+              >
+                {t("navigation.myJar")}
+              </button>
+            </div>
+
+            <div className="connected-dashboard">
+              <section
+                id="jar-summary"
+                className={
+                  "stats-grid mobile-jar-pane " +
+                  (mobileView !== "jar" ? "mobile-pane-inactive" : "")
+                }
+                aria-label={t("jar.statisticsAria")}
+              >
+                <article className="stat-card claim-card">
+                  <div className="stat-heading-row">
+                    <span>{t("jar.claimableNow")}</span>
+                    <span className="owner-chip">{shortAddress(account)}</span>
+                  </div>
+
+                  <strong>
+                    {isLoading && !isContractReady ? (
+                      <span
+                        className="skeleton-value"
+                        aria-label={t("common.loading")}
+                      />
+                    ) : (
+                      t("common.usdcAmount", {
+                        amount: formatUsdc(stats.balance, locale),
+                      })
+                    )}
+                  </strong>
+
+                  <small className="tip-count-detail">
+                    {isLoading && !isContractReady ? (
+                      <span
+                        className="skeleton-text"
+                        aria-label={t("jar.loadingTipCountAria")}
+                      />
+                    ) : (
+                      t(
+                        stats.claimableCount === 1n
+                          ? "jar.currentTip_one"
+                          : "jar.currentTip_other",
+                        { count: formatCount(stats.claimableCount, locale) },
+                      )
+                    )}
+                  </small>
+
+                  <button
+                    className="claim-button"
+                    type="button"
+                    onClick={() =>
+                      isCorrectNetwork
+                        ? void claimTips()
+                        : void switchToSelectedNetwork()
+                    }
+                    disabled={
+                      isClaiming ||
+                      (isCorrectNetwork &&
+                        (!isContractReady || stats.balance === 0n))
+                    }
+                  >
+                    {isClaiming
+                      ? t("claim.claiming")
+                      : !isCorrectNetwork
+                        ? t("claim.switchToClaim", { network: chain.name })
+                        : !isContractReady
+                          ? isLoading
+                            ? t("claim.loadingJar")
+                            : t("claim.jarUnavailable")
+                          : stats.balance === 0n
+                            ? t("claim.nothingToClaim")
+                            : t("claim.claimAll")}
+                  </button>
+
+                  {claimStatus && (
+                    <p
+                      className="claim-status"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {t(claimStatus.key, claimStatus.values)}
+                    </p>
                   )}
-                </small>
-                <button
-                  className="claim-button"
-                  type="button"
-                  onClick={() => isCorrectNetwork ? void claimTips() : void switchToSelectedNetwork()}
-                  disabled={isClaiming || (isCorrectNetwork && (!isContractReady || stats.balance === 0n))}
-                >
-                  {isClaiming
-                    ? "Claiming…"
-                    : !isCorrectNetwork
-                      ? `Switch to ${chain.name} to claim`
-                      : !isContractReady
-                        ? isLoading
-                          ? "Loading jar…"
-                          : "Jar unavailable"
-                        : stats.balance === 0n
-                          ? "Nothing to claim"
-                          : "Claim all tips"}
-                </button>
-                {claimStatus && <p className="claim-status" role="status" aria-live="polite">{claimStatus}</p>}
-                {claimTxHash && (
-                  <div className="operation-transaction compact">
-                    <span>{shortHash(claimTxHash)}</span>
-                    <button className="copy-button" type="button" aria-label="Copy claim transaction hash" title={copiedHash === claimTxHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(claimTxHash)}>
-                      <CopyIcon copied={copiedHash === claimTxHash} />
-                    </button>
-                    <a href={(chain.blockExplorers?.default.url ?? "") + "/tx/" + claimTxHash} target="_blank" rel="noreferrer">
-                      ArcScan ↗
-                    </a>
+
+                  {claimTxHash && (
+                    <div className="operation-transaction compact">
+                      <span>{shortHash(claimTxHash)}</span>
+                      <button
+                        className="copy-button"
+                        type="button"
+                        aria-label={t("transaction.copyClaimAria")}
+                        title={
+                          copiedTargetId ===
+                          "claim-current:" + claimTxHash
+                            ? t("transaction.copiedTitle")
+                            : t("transaction.copyTitle")
+                        }
+                        onClick={() =>
+                          void copyToClipboard(
+                            claimTxHash,
+                            "claim-current:" + claimTxHash,
+                            "common.copied",
+                          )
+                        }
+                      >
+                        <CopyIcon
+                          copied={
+                            copiedTargetId ===
+                            "claim-current:" + claimTxHash
+                          }
+                        />
+                      </button>
+                      <a
+                        href={
+                          (chain.blockExplorers?.default.url ?? "") +
+                          "/tx/" +
+                          claimTxHash
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {t("common.arcScan")}
+                      </a>
+                    </div>
+                  )}
+
+                  <details className="claim-history-details">
+                    <summary>
+                      <span>{t("claim.historyTitle")}</span>
+                      <strong>{formatCount(stats.claimCount, locale)}</strong>
+                    </summary>
+
+                    {isLoading ? (
+                      <p className="muted">{t("claim.historyLoading")}</p>
+                    ) : claims.length === 0 ? (
+                      <p className="muted">{t("claim.historyEmpty")}</p>
+                    ) : (
+                      <ol className="claim-list compact-list">
+                        {claims.map((claim) => (
+                          <li key={claim.index.toString()}>
+                            <div className="history-main">
+                              <strong>
+                                {t("common.usdcAmount", {
+                                  amount: formatUsdc(claim.amount, locale),
+                                })}
+                              </strong>
+                              <time
+                                dateTime={new Date(
+                                  Number(claim.timestamp) * 1000,
+                                ).toISOString()}
+                              >
+                                {formatEpochSeconds(claim.timestamp, locale)}
+                              </time>
+                            </div>
+
+                            {claim.txHash && (
+                              <div className="history-transaction">
+                                <span className="transaction-hash-copy">
+                                  <span>{shortHash(claim.txHash)}</span>
+                                  <button
+                                    className="copy-button"
+                                    type="button"
+                                    aria-label={t("transaction.copyClaimAria")}
+                                    title={
+                                      copiedTargetId ===
+                                      "claim-history:" + claim.index.toString()
+                                        ? t("transaction.copiedTitle")
+                                        : t("transaction.copyTitle")
+                                    }
+                                    onClick={() =>
+                                      void copyToClipboard(
+                                        claim.txHash!,
+                                        "claim-history:" +
+                                          claim.index.toString(),
+                                        "common.copied",
+                                      )
+                                    }
+                                  >
+                                    <CopyIcon
+                                      copied={
+                                        copiedTargetId ===
+                                        "claim-history:" +
+                                          claim.index.toString()
+                                      }
+                                    />
+                                  </button>
+                                </span>
+                                <a
+                                  href={
+                                    (chain.blockExplorers?.default.url ?? "") +
+                                    "/tx/" +
+                                    claim.txHash
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {t("common.arcScan")}
+                                </a>
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </details>
+                </article>
+
+                <article className="stat-card">
+                  <div className="stat-heading-row">
+                    <span>{t("jar.lifetimeReceived")}</span>
+                    <span className="owner-chip">{t("jar.myJar")}</span>
+                  </div>
+
+                  <strong>
+                    {isLoading && !isContractReady ? (
+                      <span
+                        className="skeleton-value"
+                        aria-label={t("common.loading")}
+                      />
+                    ) : (
+                      t("common.usdcAmount", {
+                        amount: formatUsdc(stats.totalReceived, locale),
+                      })
+                    )}
+                  </strong>
+
+                  <small className="tip-count-detail">
+                    {isLoading && !isContractReady ? (
+                      <span
+                        className="skeleton-text"
+                        aria-label={t("jar.loadingTipCountAria")}
+                      />
+                    ) : (
+                      t(
+                        stats.tipCount === 1n
+                          ? "jar.lifetimeTip_one"
+                          : "jar.lifetimeTip_other",
+                        { count: formatCount(stats.tipCount, locale) },
+                      )
+                    )}
+                  </small>
+                  <p className="stat-description">
+                    {t("jar.lifetimeDescription")}
+                  </p>
+                </article>
+              </section>
+
+              <article
+                id="send-panel"
+                className={
+                  "panel tip-panel mobile-send-pane " +
+                  (mobileView !== "send" ? "mobile-pane-inactive" : "")
+                }
+              >
+                <div className="panel-heading">
+                  <div>
+                    <span className="section-label">
+                      {t("send.sectionLabel")}
+                    </span>
+                    <h2>{t("send.title")}</h2>
+                  </div>
+                  <span
+                    className={
+                      "network-pill " +
+                      (isCorrectNetwork ? "online" : "warning")
+                    }
+                  >
+                    {isCorrectNetwork
+                      ? chain.name
+                      : t("send.switchToNetwork", { network: chain.name })}
+                  </span>
+                </div>
+
+                <div className="wallet-balance-row">
+                  <span>{t("send.connectedBalance")}</span>
+                  <strong>
+                    {walletBalance !== null
+                      ? t("common.usdcAmount", {
+                          amount: formatUsdc(walletBalance, locale),
+                        })
+                      : t("common.unavailable")}
+                  </strong>
+                  <small>
+                    {t("send.balanceAvailable", { network: chain.name })}
+                  </small>
+                </div>
+
+                {recipientNotice && (
+                  <div
+                    id="recipient-notice"
+                    className="recipient-notice"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <strong>
+                      {t(recipientNotice.key, recipientNotice.values)}
+                    </strong>
+                    <small>{t("send.recipientFeedback.hint")}</small>
                   </div>
                 )}
-                <details className="claim-history-details">
+
+                {isCorrectNetwork && !isLoading && !isContractReady && (
+                  <div className="panel-alert contract-alert" role="alert">
+                    <p>{t("send.jarUnavailableMessage")}</p>
+                    <button
+                      type="button"
+                      onClick={() => void refreshAllData()}
+                      disabled={
+                        isRefreshingAll ||
+                        isLoading ||
+                        isSentHistoryLoading ||
+                        Date.now() < refreshCooldownUntil
+                      }
+                    >
+                      {Date.now() < refreshCooldownUntil
+                        ? t("send.tryAgainShortly")
+                        : t("send.retryJarData")}
+                    </button>
+                  </div>
+                )}
+
+                {!isCorrectNetwork ? (
+                  <div className="connect-state compact-state">
+                    <p>{t("send.wrongNetworkMessage")}</p>
+                    <button
+                      ref={networkSwitchButtonRef}
+                      type="button"
+                      onClick={() => void switchToSelectedNetwork()}
+                    >
+                      {t("send.switchToNetwork", { network: chain.name })}
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={sendTip}>
+                    <label htmlFor="amount">{t("send.amountLabel")}</label>
+                    <div className="amount-input">
+                      <input
+                        ref={amountInputRef}
+                        id="amount"
+                        inputMode="decimal"
+                        value={amount}
+                        onChange={(event) => {
+                          setAmount(event.target.value);
+                          setAmountPercentage(0);
+                          setSendStatus(null);
+                        }}
+                        placeholder={t("send.amountPlaceholder")}
+                        required
+                      />
+                      <span>USDC</span>
+                    </div>
+
+                    <div
+                      className="amount-presets"
+                      aria-label={t("send.amountPresetsAria")}
+                    >
+                      {["1", "5", "10"].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          className={amount === preset ? "active" : ""}
+                          aria-pressed={amount === preset}
+                          onClick={() => {
+                            setPresetAmount(preset);
+                            setSendStatus(null);
+                          }}
+                        >
+                          {t("common.usdcAmount", {
+                            amount: formatUsdc(parseUnits(preset, 18), locale),
+                          })}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="percentage-control">
+                      <div>
+                        <span>{t("send.spendablePercentage")}</span>
+                        <strong>
+                          {formatPercentage(
+                            amountPercentage,
+                            locale,
+                            amountPercentage % 1 === 0 ? 0 : 2,
+                          )}
+                        </strong>
+                      </div>
+                      <input
+                        aria-label={t("send.walletPercentageAria")}
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={Math.round(amountPercentage)}
+                        onChange={(event) => {
+                          setAmountFromPercentage(Number(event.target.value));
+                          setSendStatus(null);
+                        }}
+                        disabled={!walletBalance || walletBalance === 0n}
+                      />
+                      <div className="range-labels">
+                        <span>{t("send.rangeMinimum")}</span>
+                        <span>{t("send.rangeMaximum")}</span>
+                      </div>
+                    </div>
+
+                    <label htmlFor="message">{t("send.messageLabel")}</label>
+                    <textarea
+                      id="message"
+                      value={message}
+                      onChange={(event) => {
+                        setMessage(event.target.value);
+                        setSendStatus(null);
+                      }}
+                      placeholder={t("send.messagePlaceholder")}
+                      rows={4}
+                      aria-invalid={messageBytes > 280}
+                      aria-describedby="message-byte-count"
+                    />
+                    <div
+                      id="message-byte-count"
+                      className={
+                        "byte-count " + (messageBytes > 280 ? "invalid" : "")
+                      }
+                    >
+                      {t("send.messageByteCount", {
+                        count: formatCount(messageBytes, locale),
+                      })}
+                    </div>
+
+                    <div className="field-heading">
+                      <label htmlFor="recipient">
+                        {t("send.recipientLabel")}
+                      </label>
+                      <button
+                        className="inline-action"
+                        type="button"
+                        onClick={useConnectedWalletAsRecipient}
+                      >
+                        {t("send.useMyAddress")}
+                      </button>
+                    </div>
+                    <input
+                      ref={recipientInputRef}
+                      className={
+                        "address-input " +
+                        (recipientInput && !recipientAddress ? "invalid " : "") +
+                        (isRecipientHighlighted
+                          ? "recipient-highlighted"
+                          : "")
+                      }
+                      id="recipient"
+                      value={recipientInput}
+                      onChange={(event) => {
+                        setRecipientInput(event.target.value.trim());
+                        clearRecipientFeedback();
+                        setSendStatus(null);
+                      }}
+                      placeholder={t("send.recipientPlaceholder")}
+                      spellCheck={false}
+                      required
+                      aria-invalid={Boolean(
+                        recipientInput && !recipientAddress,
+                      )}
+                      aria-describedby={
+                        recipientInput && !recipientAddress
+                          ? "recipient-error"
+                          : recipientNotice
+                            ? "recipient-notice"
+                            : undefined
+                      }
+                    />
+                    {recipientInput && !recipientAddress && (
+                      <p
+                        id="recipient-error"
+                        className="field-error"
+                        role="alert"
+                      >
+                        {t("send.invalidRecipient")}
+                      </p>
+                    )}
+
+                    {canSendTip &&
+                      recipientAddress &&
+                      parsedTipAmount !== null && (
+                        <div
+                          className="send-review"
+                          aria-label={t("send.summaryAria")}
+                        >
+                          <div>
+                            <span>{t("send.readyToSend")}</span>
+                            <strong>
+                              {t("common.usdcAmount", {
+                                amount: formatUsdc(
+                                  parsedTipAmount,
+                                  locale,
+                                ),
+                              })}
+                            </strong>
+                          </div>
+                          <small>
+                            {remainingAfterTip !== null
+                              ? t("send.summaryRecipientWithBalance", {
+                                  address: shortAddress(recipientAddress),
+                                  balance: formatUsdc(
+                                    remainingAfterTip,
+                                    locale,
+                                  ),
+                                })
+                              : t("send.summaryRecipient", {
+                                  address: shortAddress(recipientAddress),
+                                })}
+                          </small>
+                        </div>
+                      )}
+
+                    <button
+                      className="primary-button"
+                      type="submit"
+                      disabled={!canSendTip || isSending}
+                    >
+                      {sendButtonLabel}
+                    </button>
+
+                    {sendStatus && (
+                      <p
+                        className="status-message operation-status"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {t(sendStatus.key, sendStatus.values)}
+                      </p>
+                    )}
+
+                    {sendTxHash && (
+                      <div className="operation-transaction">
+                        <span>{shortHash(sendTxHash)}</span>
+                        <button
+                          className="copy-button"
+                          type="button"
+                          aria-label={t("transaction.copySendAria")}
+                          title={
+                            copiedTargetId ===
+                            "send-current:" + sendTxHash
+                              ? t("transaction.copiedTitle")
+                              : t("transaction.copyTitle")
+                          }
+                          onClick={() =>
+                            void copyToClipboard(
+                              sendTxHash,
+                              "send-current:" + sendTxHash,
+                              "common.copied",
+                            )
+                          }
+                        >
+                          <CopyIcon
+                            copied={
+                              copiedTargetId ===
+                              "send-current:" + sendTxHash
+                            }
+                          />
+                        </button>
+                        <a
+                          href={
+                            (chain.blockExplorers?.default.url ?? "") +
+                            "/tx/" +
+                            sendTxHash
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {t("common.viewOnArcScan")}
+                        </a>
+                      </div>
+                    )}
+                  </form>
+                )}
+
+                {selectedNetwork.faucetUrl && (
+                  <a
+                    className="faucet-button"
+                    href={selectedNetwork.faucetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("send.faucetLink")}
+                  </a>
+                )}
+
+                <details className="send-history-details">
                   <summary>
-                    <span>Claim history</span>
-                    <strong>{stats.claimCount.toString()}</strong>
+                    <span>{t("sentHistory.title")}</span>
+                    <strong>{formatCount(sentTipCount, locale)}</strong>
                   </summary>
-                  {isLoading ? (
-                    <p className="muted">Loading claim history…</p>
-                  ) : claims.length === 0 ? (
-                    <p className="muted">No claims yet.</p>
+
+                  {sentHistoryError && (
+                    <p className="panel-error" role="alert">
+                      {t(sentHistoryError.key, sentHistoryError.values)}
+                    </p>
+                  )}
+
+                  {isSentHistoryLoading ? (
+                    <p className="muted">{t("sentHistory.loading")}</p>
+                  ) : sentTips.length === 0 ? (
+                    <p className="muted">{t("sentHistory.empty")}</p>
                   ) : (
-                    <ol className="claim-list compact-list">
-                      {claims.map((claim) => (
-                        <li key={claim.index.toString()}>
+                    <ol className="tip-list compact-list">
+                      {sentTips.map((tip) => (
+                        <li key={tip.txHash ?? tip.index.toString()}>
                           <div className="history-main">
-                            <strong>{formatUsdc(claim.amount)} USDC</strong>
-                            <time dateTime={new Date(Number(claim.timestamp) * 1000).toISOString()}>
-                              {new Date(Number(claim.timestamp) * 1000).toLocaleString()}
+                            <strong>
+                              {t("common.usdcAmount", {
+                                amount: formatUsdc(tip.amount, locale),
+                              })}
+                            </strong>
+                            <time
+                              dateTime={new Date(
+                                Number(tip.timestamp) * 1000,
+                              ).toISOString()}
+                            >
+                              {formatEpochSeconds(tip.timestamp, locale)}
                             </time>
                           </div>
-                          {claim.txHash && (
+                          <span className="tip-recipient">
+                            {t("sentHistory.to", {
+                              address: shortAddress(tip.recipient),
+                            })}
+                          </span>
+                          {tip.message && <p>{tip.message}</p>}
+
+                          {tip.txHash && (
                             <div className="history-transaction">
-                              <span className="transaction-hash-copy">
-                                <span>{shortHash(claim.txHash)}</span>
-                                <button className="copy-button" type="button" aria-label="Copy claim transaction hash" title={copiedHash === claim.txHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(claim.txHash!)}>
-                                  <CopyIcon copied={copiedHash === claim.txHash} />
-                                </button>
-                              </span>
-                              <a href={(chain.blockExplorers?.default.url ?? "") + "/tx/" + claim.txHash} target="_blank" rel="noreferrer">
-                                ArcScan ↗
+                              <span>{shortHash(tip.txHash)}</span>
+                              <button
+                                className="copy-button"
+                                type="button"
+                                aria-label={t("transaction.copySendAria")}
+                                title={
+                                  copiedTargetId ===
+                                  "sent-history:" + tip.txHash
+                                    ? t("transaction.copiedTitle")
+                                    : t("transaction.copyTitle")
+                                }
+                                onClick={() =>
+                                  void copyToClipboard(
+                                    tip.txHash!,
+                                    "sent-history:" + tip.txHash,
+                                    "common.copied",
+                                  )
+                                }
+                              >
+                                <CopyIcon
+                                  copied={
+                                    copiedTargetId ===
+                                    "sent-history:" + tip.txHash
+                                  }
+                                />
+                              </button>
+                              <a
+                                href={
+                                  (chain.blockExplorers?.default.url ?? "") +
+                                  "/tx/" +
+                                  tip.txHash
+                                }
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {t("common.arcScan")}
                               </a>
                             </div>
                           )}
@@ -1163,230 +1970,186 @@ export default function App() {
                 </details>
               </article>
 
-              <article className="stat-card">
-                <div className="stat-heading-row">
-                  <span>Lifetime received</span>
-                  <span className="owner-chip">My jar</span>
-                </div>
-                <strong>
-                  {isLoading && !isContractReady ? <span className="skeleton-value" aria-label="Loading" /> : formatUsdc(stats.totalReceived)} USDC
-                </strong>
-                <small className="tip-count-detail">
-                  {isLoading && !isContractReady ? (
-                    <span className="skeleton-text" aria-label="Loading tip count" />
-                  ) : (
-                    <><strong>{stats.tipCount.toString()}</strong> lifetime tip{stats.tipCount === 1n ? "" : "s"}</>
-                  )}
-                </small>
-                <p className="stat-description">Always tied to your connected wallet—not the recipient in the Send form.</p>
-              </article>
-            </section>
+              <article
+                id="latest-tips-panel"
+                className={
+                  "panel recent-panel mobile-jar-pane " +
+                  (mobileView !== "jar" ? "mobile-pane-inactive" : "")
+                }
+              >
+                <div className="panel-heading recent-heading">
+                  <div>
+                    <span className="section-label">
+                      {t("latestTips.sectionLabel")}
+                    </span>
+                    <h2>{t("latestTips.title")}</h2>
+                    <small className="updated-at">
+                      {lastUpdatedAt
+                        ? t("refresh.updatedAt", {
+                            time: formatUpdatedTime(lastUpdatedAt, locale),
+                          })
+                        : t("refresh.waitingForFirstSync")}
+                    </small>
+                  </div>
 
-            <article
-              id="send-panel"
-              className={"panel tip-panel mobile-send-pane " + (mobileView !== "send" ? "mobile-pane-inactive" : "")}
-            >
-              <div className="panel-heading">
-                <div>
-                  <span className="section-label">SEND A TIP</span>
-                  <h2>Support the jar</h2>
-                </div>
-                <span className={"network-pill " + (isCorrectNetwork ? "online" : "warning")}>
-                  {isCorrectNetwork ? chain.name : "Switch network"}
-                </span>
-              </div>
-
-              <div className="wallet-balance-row">
-                <span>Connected wallet balance</span>
-                <strong>
-                  {walletBalance !== null ? formatUsdc(walletBalance) + " USDC" : "Unavailable"}
-                </strong>
-                <small>Available on {chain.name} for tips and gas</small>
-              </div>
-
-              {isCorrectNetwork && !isLoading && !isContractReady && (
-                <div className="panel-alert contract-alert" role="alert">
-                  <p>Jar data is unavailable, so sending is paused.</p>
                   <button
+                    className="text-button refresh-button"
                     type="button"
                     onClick={() => void refreshAllData()}
-                    disabled={isRefreshingAll || isLoading || isSentHistoryLoading || Date.now() < refreshCooldownUntil}
+                    disabled={
+                      isRefreshingAll ||
+                      isLoading ||
+                      isSentHistoryLoading ||
+                      Date.now() < refreshCooldownUntil
+                    }
                   >
-                    {Date.now() < refreshCooldownUntil ? "Try again shortly" : "Retry jar data"}
+                    {isRefreshingAll || isLoading || isSentHistoryLoading
+                      ? t("refresh.refreshing")
+                      : Date.now() < refreshCooldownUntil
+                        ? t("refresh.upToDate")
+                        : t("refresh.refreshAll")}
                   </button>
                 </div>
-              )}
 
-              {!isCorrectNetwork ? (
-                <div className="connect-state compact-state">
-                  <p>Your wallet is connected to another network.</p>
-                  <button type="button" onClick={() => void switchToSelectedNetwork()}>
-                    Switch to {chain.name}
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={sendTip}>
-                  <label htmlFor="amount">Amount</label>
-                  <div className="amount-input">
-                    <input
-                      id="amount"
-                      inputMode="decimal"
-                      value={amount}
-                      onChange={(event) => {
-                        setAmount(event.target.value);
-                        setAmountPercentage(0);
-                        setSendStatus("");
-                      }}
-                      placeholder="0.01"
-                      required
-                    />
-                    <span>USDC</span>
-                  </div>
-
-                  <div className="amount-presets" aria-label="Tip amount presets">
-                    {["1", "5", "10"].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        className={amount === preset ? "active" : ""}
-                        aria-pressed={amount === preset}
-                        onClick={() => {
-                          setPresetAmount(preset);
-                          setSendStatus("");
-                        }}
-                      >
-                        {preset} USDC
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="percentage-control">
-                    <div>
-                      <span>Spendable balance percentage</span>
-                      <strong>{amountPercentage.toFixed(amountPercentage % 1 === 0 ? 0 : 2)}%</strong>
-                    </div>
-                    <input
-                      aria-label="Wallet balance percentage"
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={Math.round(amountPercentage)}
-                      onChange={(event) => {
-                        setAmountFromPercentage(Number(event.target.value));
-                        setSendStatus("");
-                      }}
-                      disabled={!walletBalance || walletBalance === 0n}
-                    />
-                    <div className="range-labels"><span>0%</span><span>100% · keeps 0.01 for gas</span></div>
-                  </div>
-
-                  <label htmlFor="message">Onchain message</label>
-                  <textarea
-                    id="message"
-                    value={message}
-                    onChange={(event) => {
-                      setMessage(event.target.value);
-                      setSendStatus("");
-                    }}
-                    placeholder="Leave a short message"
-                    rows={4}
-                    aria-invalid={messageBytes > 280}
-                    aria-describedby="message-byte-count"
-                  />
-                  <div id="message-byte-count" className={"byte-count " + (messageBytes > 280 ? "invalid" : "")}>
-                    {messageBytes} / 280 bytes
-                  </div>
-
-                  <div className="field-heading">
-                    <label htmlFor="recipient">Recipient wallet</label>
-                    <button className="inline-action" type="button" onClick={useConnectedWalletAsRecipient}>
-                      Use my address
+                {jarStatus && (
+                  <div className="panel-alert" role="alert">
+                    <p>{t(jarStatus.key, jarStatus.values)}</p>
+                    <button
+                      type="button"
+                      onClick={() => void refreshAllData()}
+                      disabled={
+                        isRefreshingAll ||
+                        isLoading ||
+                        isSentHistoryLoading ||
+                        Date.now() < refreshCooldownUntil
+                      }
+                    >
+                      {t("common.retry")}
                     </button>
                   </div>
-                  <input
-                    className={"address-input " + (recipientInput && !recipientAddress ? "invalid" : "")}
-                    id="recipient"
-                    value={recipientInput}
-                    onChange={(event) => {
-                      setRecipientInput(event.target.value.trim());
-                      setSendStatus("");
-                    }}
-                    placeholder="0x…"
-                    spellCheck={false}
-                    required
-                    aria-invalid={Boolean(recipientInput && !recipientAddress)}
-                    aria-describedby={recipientInput && !recipientAddress ? "recipient-error" : undefined}
-                  />
-                  {recipientInput && !recipientAddress && (
-                    <p id="recipient-error" className="field-error" role="alert">Enter a valid EVM wallet address.</p>
-                  )}
+                )}
 
-                  {canSendTip && recipientAddress && parsedTipAmount !== null && (
-                    <div className="send-review" aria-label="Tip summary">
-                      <div><span>Ready to send</span><strong>{formatUsdc(parsedTipAmount)} USDC</strong></div>
-                      <small>To {shortAddress(recipientAddress)}{remainingAfterTip !== null ? " · Balance after " + formatUsdc(remainingAfterTip) + " USDC" : ""}</small>
-                    </div>
-                  )}
-
-                  <button className="primary-button" type="submit" disabled={!canSendTip || isSending}>
-                    {sendButtonLabel}
-                  </button>
-                  {sendStatus && (
-                    <p className="status-message operation-status" role="status" aria-live="polite">
-                      {sendStatus}
-                    </p>
-                  )}
-                  {sendTxHash && (
-                    <div className="operation-transaction">
-                      <span>{shortHash(sendTxHash)}</span>
-                      <button className="copy-button" type="button" aria-label="Copy send transaction hash" title={copiedHash === sendTxHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(sendTxHash)}>
-                        <CopyIcon copied={copiedHash === sendTxHash} />
-                      </button>
-                      <a href={(chain.blockExplorers?.default.url ?? "") + "/tx/" + sendTxHash} target="_blank" rel="noreferrer">
-                        View on ArcScan ↗
-                      </a>
-                    </div>
-                  )}
-                </form>
-              )}
-
-              {selectedNetwork.faucetUrl && (
-                <a className="faucet-button" href={selectedNetwork.faucetUrl} target="_blank" rel="noreferrer">
-                  Get testnet USDC from the official Circle Faucet ↗
-                </a>
-              )}
-
-              <details className="send-history-details">
-                <summary>
-                  <span>Sent tip history</span>
-                  <strong>{sentTipCount}</strong>
-                </summary>
-                {sentHistoryError && <p className="panel-error" role="alert">{sentHistoryError}</p>}
-                {isSentHistoryLoading ? (
-                  <p className="muted">Loading sent tips…</p>
-                ) : sentTips.length === 0 ? (
-                  <p className="muted">No sent tips yet.</p>
+                {isLoading && receivedTips.length === 0 ? (
+                  <div
+                    className="skeleton-list"
+                    aria-label={t("refresh.loadingOnchainDataAria")}
+                  >
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                ) : receivedTips.length === 0 ? (
+                  <p className="muted">{t("latestTips.empty")}</p>
                 ) : (
-                  <ol className="tip-list compact-list">
-                    {sentTips.map((tip) => (
-                      <li key={tip.txHash ?? tip.index.toString()}>
-                        <div className="history-main">
-                          <strong>{formatUsdc(tip.amount)} USDC</strong>
-                          <time dateTime={new Date(Number(tip.timestamp) * 1000).toISOString()}>
-                            {new Date(Number(tip.timestamp) * 1000).toLocaleString()}
-                          </time>
+                  <ol className="tip-list">
+                    {receivedTips.map((tip) => (
+                      <li key={tip.index.toString()}>
+                        <div className="tip-main">
+                          <strong>
+                            {t("common.usdcAmount", {
+                              amount: formatUsdc(tip.amount, locale),
+                            })}
+                          </strong>
+
+                          <div className="tip-sender-row">
+                            <span>
+                              {t("latestTips.from", {
+                                address: shortAddress(tip.sender),
+                              })}
+                            </span>
+                            <button
+                              className="copy-button sender-copy-button"
+                              type="button"
+                              aria-label={t("latestTips.copySenderAria", {
+                                address: tip.sender,
+                              })}
+                              title={
+                                copiedTargetId ===
+                                "sender-address:" + tip.index.toString()
+                                  ? t("latestTips.senderCopiedTitle")
+                                  : t("latestTips.copySenderTitle")
+                              }
+                              onClick={() =>
+                                void copyToClipboard(
+                                  tip.sender,
+                                  "sender-address:" + tip.index.toString(),
+                                  "latestTips.senderCopiedTitle",
+                                )
+                              }
+                            >
+                              <CopyIcon
+                                copied={
+                                  copiedTargetId ===
+                                  "sender-address:" + tip.index.toString()
+                                }
+                              />
+                            </button>
+                          </div>
                         </div>
-                        <span className="tip-recipient">To {shortAddress(tip.recipient)}</span>
-                        {tip.message && <p>{tip.message}</p>}
+
+                        <p>{tip.message || t("latestTips.directTransfer")}</p>
+
+                        <div className="tip-card-actions">
+                          <time
+                            dateTime={new Date(
+                              Number(tip.timestamp) * 1000,
+                            ).toISOString()}
+                          >
+                            {formatEpochSeconds(tip.timestamp, locale)}
+                          </time>
+
+                          {tip.sender.toLowerCase() !== account.toLowerCase() && (
+                            <button
+                              className="tip-back-button"
+                              type="button"
+                              aria-label={t("latestTips.tipThisPersonAria", {
+                                address: tip.sender,
+                              })}
+                              onClick={() => prepareTipBack(tip.sender)}
+                            >
+                              {t("latestTips.tipThisPerson")}
+                            </button>
+                          )}
+                        </div>
+
                         {tip.txHash && (
                           <div className="history-transaction">
                             <span>{shortHash(tip.txHash)}</span>
-                            <button className="copy-button" type="button" aria-label="Copy send transaction hash" title={copiedHash === tip.txHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(tip.txHash!)}>
-                              <CopyIcon copied={copiedHash === tip.txHash} />
+                            <button
+                              className="copy-button"
+                              type="button"
+                              aria-label={t("transaction.copyReceivedAria")}
+                              title={
+                                copiedTargetId ===
+                                "received-history:" + tip.txHash
+                                  ? t("transaction.copiedTitle")
+                                  : t("transaction.copyTitle")
+                              }
+                              onClick={() =>
+                                void copyToClipboard(
+                                  tip.txHash!,
+                                  "received-history:" + tip.txHash,
+                                  "common.copied",
+                                )
+                              }
+                            >
+                              <CopyIcon
+                                copied={
+                                  copiedTargetId ===
+                                  "received-history:" + tip.txHash
+                                }
+                              />
                             </button>
-                            <a href={(chain.blockExplorers?.default.url ?? "") + "/tx/" + tip.txHash} target="_blank" rel="noreferrer">
-                              ArcScan ↗
+                            <a
+                              href={
+                                (chain.blockExplorers?.default.url ?? "") +
+                                "/tx/" +
+                                tip.txHash
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {t("common.arcScan")}
                             </a>
                           </div>
                         )}
@@ -1394,86 +2157,21 @@ export default function App() {
                     ))}
                   </ol>
                 )}
-              </details>
-            </article>
+              </article>
+            </div>
+          </>
+        )}
 
-            <article
-              id="latest-tips-panel"
-              className={"panel recent-panel mobile-jar-pane " + (mobileView !== "jar" ? "mobile-pane-inactive" : "")}
-            >
-              <div className="panel-heading recent-heading">
-                <div>
-                  <span className="section-label">MY JAR</span>
-                  <h2>Latest tips</h2>
-                  <small className="updated-at">
-                    {lastUpdatedAt ? "Updated " + lastUpdatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Waiting for first sync"}
-                  </small>
-                </div>
-                <button
-                  className="text-button refresh-button"
-                  type="button"
-                  onClick={() => void refreshAllData()}
-                  disabled={isRefreshingAll || isLoading || isSentHistoryLoading || Date.now() < refreshCooldownUntil}
-                >
-                  {isRefreshingAll || isLoading || isSentHistoryLoading
-                    ? "Refreshing…"
-                    : Date.now() < refreshCooldownUntil
-                      ? "Up to date"
-                      : "Refresh all"}
-                </button>
-              </div>
-
-              {jarStatus && (
-                <div className="panel-alert" role="alert">
-                  <p>{jarStatus}</p>
-                  <button type="button" onClick={() => void refreshAllData()} disabled={isRefreshingAll || isLoading || isSentHistoryLoading || Date.now() < refreshCooldownUntil}>Retry</button>
-                </div>
-              )}
-
-              {isLoading && receivedTips.length === 0 ? (
-                <div className="skeleton-list" aria-label="Loading onchain data">
-                  <span /><span /><span />
-                </div>
-              ) : receivedTips.length === 0 ? (
-                <p className="muted">No tips received yet.</p>
-              ) : (
-                <ol className="tip-list">
-                  {receivedTips.map((tip) => (
-                    <li key={tip.index.toString()}>
-                      <div className="tip-main">
-                        <strong>{formatUsdc(tip.amount)} USDC</strong>
-                        <span>From {shortAddress(tip.sender)}</span>
-                      </div>
-                      <p>{tip.message || "Direct transfer"}</p>
-                      <time dateTime={new Date(Number(tip.timestamp) * 1000).toISOString()}>
-                        {new Date(Number(tip.timestamp) * 1000).toLocaleString()}
-                      </time>
-                      {tip.txHash && (
-                        <div className="history-transaction">
-                          <span>{shortHash(tip.txHash)}</span>
-                          <button className="copy-button" type="button" aria-label="Copy received transaction hash" title={copiedHash === tip.txHash ? "Copied" : "Copy transaction hash"} onClick={() => void copyTransactionHash(tip.txHash!)}>
-                            <CopyIcon copied={copiedHash === tip.txHash} />
-                          </button>
-                          <a href={(chain.blockExplorers?.default.url ?? "") + "/tx/" + tip.txHash} target="_blank" rel="noreferrer">
-                            ArcScan ↗
-                          </a>
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </article>
-          </div>
-        </>
-      )}
-
-      <footer>
-        <span>{chain.testnet ? "Experimental testnet dApp. Testnet USDC has no real-world value." : "Arc Tip Jar on Mainnet."}</span>
-        <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
-          {shortAddress(contractAddress)} ↗
-        </a>
-      </footer>
+        <footer>
+          <span>
+            {chain.testnet
+              ? t("footer.testnetDisclaimer")
+              : t("footer.mainnetDescription")}
+          </span>
+          <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
+            {shortAddress(contractAddress)} ↗
+          </a>
+        </footer>
       </main>
     </>
   );
