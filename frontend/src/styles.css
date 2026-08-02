@@ -1503,7 +1503,7 @@ textarea:focus-visible {
 
 .language-select-label select {
   width: 68px;
-  padding: 9px 28px 9px 12px;
+  padding: 9px 8px 9px 12px;
   color: #dce7e2;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
@@ -1643,12 +1643,12 @@ textarea:focus-visible {
 
   .network-select-label select {
     width: 92px;
-    padding-right: 23px;
+    padding-right: 6px;
   }
 
   .language-select-label select {
     width: 54px;
-    padding: 8px 21px 8px 8px;
+    padding: 8px 4px 8px 8px;
     font-size: 0.72rem;
   }
 
