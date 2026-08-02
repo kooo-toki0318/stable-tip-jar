@@ -1,22 +1,25 @@
-const ARC_TESTNET_RPC_URL = "https://rpc.testnet.arc.network";
+const ARC_TESTNET_RPC_URLS = [
+  "https://rpc.testnet.arc.network",
+  "https://rpc.drpc.testnet.arc.network",
+  "https://rpc.quicknode.testnet.arc.network",
+  "https://rpc.blockdaemon.testnet.arc.network",
+];
 const ALLOWED_METHODS = new Set([
   "eth_blockNumber",
   "eth_call",
   "eth_chainId",
   "eth_getBalance",
   "eth_getCode",
-  "eth_getLogs",
   "eth_getBlockByNumber",
+  "eth_getTransactionByHash",
   "eth_getTransactionReceipt",
 ]);
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const RETRYABLE_RPC_ERROR_CODES = new Set([-32005, -32011]);
-const MAX_REQUEST_BODY_BYTES = 1_048_576;
-const MAX_UPSTREAM_ATTEMPTS = 4;
-
-function wait(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
+const MAX_REQUEST_BODY_BYTES = 131_072;
+const MAX_BATCH_SIZE = 20;
+const MAX_UPSTREAM_ATTEMPTS = 2;
+let providerCursor = 0;
 
 function hasRetryableRpcError(responseBody) {
   try {
@@ -38,6 +41,14 @@ function hasRetryableRpcError(responseBody) {
 }
 
 export async function onRequestPost({ request }) {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin) {
+    return Response.json(
+      { error: "Cross-origin RPC requests are not allowed." },
+      { status: 403 },
+    );
+  }
+
   const bodyBytes = await request.arrayBuffer();
   if (bodyBytes.byteLength > MAX_REQUEST_BODY_BYTES) {
     return Response.json({ error: "Request body is too large." }, { status: 413 });
@@ -54,16 +65,24 @@ export async function onRequestPost({ request }) {
   const requests = Array.isArray(payload) ? payload : [payload];
   if (
     requests.length === 0 ||
+    requests.length > MAX_BATCH_SIZE ||
     requests.some((item) => !item || !ALLOWED_METHODS.has(item.method))
   ) {
     return Response.json({ error: "Unsupported RPC method." }, { status: 403 });
   }
 
+  const startProvider = providerCursor % ARC_TESTNET_RPC_URLS.length;
+  providerCursor = (providerCursor + 1) % ARC_TESTNET_RPC_URLS.length;
   let finalResponse = null;
+  let attemptsMade = 0;
   for (let attempt = 0; attempt < MAX_UPSTREAM_ATTEMPTS; attempt += 1) {
-    let retryDelay = 750 * 2 ** attempt;
+    attemptsMade = attempt + 1;
+    const rpcUrl =
+      ARC_TESTNET_RPC_URLS[
+        (startProvider + attempt) % ARC_TESTNET_RPC_URLS.length
+      ];
     try {
-      const upstream = await fetch(ARC_TESTNET_RPC_URL, {
+      const upstream = await fetch(rpcUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body,
@@ -73,21 +92,16 @@ export async function onRequestPost({ request }) {
         body: responseBody,
         status: upstream.status,
         contentType: upstream.headers.get("content-type") ?? "application/json",
+        provider: new URL(rpcUrl).hostname,
       };
 
       const shouldRetry =
         RETRYABLE_STATUSES.has(upstream.status) ||
         hasRetryableRpcError(responseBody);
       if (!shouldRetry || attempt === MAX_UPSTREAM_ATTEMPTS - 1) break;
-
-      const retryAfterSeconds = Number(upstream.headers.get("retry-after"));
-      if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
-        retryDelay = retryAfterSeconds * 1_000;
-      }
     } catch {
       if (attempt === MAX_UPSTREAM_ATTEMPTS - 1) break;
     }
-    await wait(retryDelay);
   }
 
   if (!finalResponse) {
@@ -99,6 +113,8 @@ export async function onRequestPost({ request }) {
     headers: {
       "content-type": finalResponse.contentType,
       "cache-control": "no-store",
+      "x-arc-rpc-provider": finalResponse.provider,
+      "x-arc-rpc-attempts": String(attemptsMade),
     },
   });
 }

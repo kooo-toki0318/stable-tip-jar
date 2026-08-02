@@ -175,7 +175,8 @@
       "latestTipsFailed": "Latest tips could not be refreshed. Showing the last loaded data. {{error}}",
       "claimHistoryFailed": "Claim history could not be refreshed. Showing the last loaded data. {{error}}",
       "jarDataFailed": "Jar data could not be refreshed. Showing the last loaded data. {{error}}",
-      "sentHistoryFailed": "Sent history could not be refreshed. {{error}}"
+      "sentHistoryFailed": "Sent history could not be refreshed. {{error}}",
+      "historyIndexerNotConfigured": "The history indexer is not configured. Add ENVIO_API_TOKEN to Cloudflare Pages. Balance, send, and claim remain available."
     },
     "send": {
       "walletRequired": "Connect your wallet first.",

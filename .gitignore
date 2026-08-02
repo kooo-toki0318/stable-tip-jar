@@ -19,6 +19,10 @@ keystore/
 .ignore/
 archive/
 
+# Local Codex handoff notes
+AGENTS.md
+CURRENT_STATE.md
+
 # Editors and operating systems
 .vscode/
 .idea/

@@ -4,6 +4,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  decodeEventLog,
   formatUnits,
   getAddress,
   http,
@@ -13,6 +14,7 @@ import {
   type Address,
   type EIP1193Provider,
   type Hash,
+  type Hex,
 } from "viem";
 import { arcTipJarAbi } from "./abi";
 import {
@@ -109,7 +111,7 @@ function CopyIcon({ copied }: { copied: boolean }) {
   );
 }
 
-const RPC_MIN_INTERVAL_MS = 600;
+const RPC_MIN_INTERVAL_MS = 250;
 let rpcQueue: Promise<void> = Promise.resolve();
 let lastRpcRequestAt = 0;
 
@@ -117,42 +119,16 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
 }
 
-async function executeRpcWithRetry<T>(request: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+async function withRpcQueue<T>(request: () => Promise<T>): Promise<T> {
+  const runRequest = async () => {
     const elapsed = Date.now() - lastRpcRequestAt;
     if (elapsed < RPC_MIN_INTERVAL_MS) {
       await wait(RPC_MIN_INTERVAL_MS - elapsed);
     }
     lastRpcRequestAt = Date.now();
-
-    try {
-      return await request();
-    } catch (error) {
-      const message = error instanceof Error ? error.message.toLowerCase() : "";
-      const isTransient =
-        message.includes("too many requests") ||
-        message.includes("rate limit exceeded") ||
-        message.includes("request limit reached") ||
-        message.includes("-32005") ||
-        message.includes("-32011") ||
-        message.includes("429") ||
-        message.includes("502") ||
-        message.includes("503") ||
-        message.includes("504") ||
-        message.includes("failed to fetch") ||
-        message.includes("network error");
-      if (!isTransient || attempt === 3) throw error;
-      await wait(1_000 * 2 ** attempt);
-    }
-  }
-  throw new Error("RPC request failed after retries.");
-}
-
-async function withRpcRetry<T>(request: () => Promise<T>): Promise<T> {
-  const queuedRequest = rpcQueue.then(
-    () => executeRpcWithRetry(request),
-    () => executeRpcWithRetry(request),
-  );
+    return request();
+  };
+  const queuedRequest = rpcQueue.then(runRequest, runRequest);
   rpcQueue = queuedRequest.then(
     () => undefined,
     () => undefined,
@@ -160,49 +136,69 @@ async function withRpcRetry<T>(request: () => Promise<T>): Promise<T> {
   return queuedRequest;
 }
 
-const MAX_LOG_BLOCK_RANGE = 10_000n;
+type ActivityTransaction = {
+  index: number;
+  transactionHash: Hash;
+};
 
-async function getContractEventsInChunks<T>(
-  fromBlock: bigint,
-  toBlock: bigint,
-  getEvents: (chunkFromBlock: bigint, chunkToBlock: bigint) => Promise<readonly T[]>,
-): Promise<T[]> {
-  const events: T[] = [];
-  for (
-    let chunkFromBlock = fromBlock;
-    chunkFromBlock <= toBlock;
-    chunkFromBlock += MAX_LOG_BLOCK_RANGE
-  ) {
-    const chunkToBlock =
-      chunkFromBlock + MAX_LOG_BLOCK_RANGE - 1n < toBlock
-        ? chunkFromBlock + MAX_LOG_BLOCK_RANGE - 1n
-        : toBlock;
-    const chunkEvents = await withRpcRetry(() =>
-      getEvents(chunkFromBlock, chunkToBlock),
-    );
-    events.push(...chunkEvents);
+type ActivityLog = {
+  blockNumber: number;
+  logIndex: number;
+  transactionHash: Hash;
+  data: Hex;
+  topics: [Hex, ...Hex[]];
+  timestamp: string | null;
+};
+
+type ActivityResponse = {
+  sentTipCount: number;
+  sentTips: ActivityLog[];
+  receivedTipTransactions: ActivityTransaction[];
+  claimTransactions: ActivityTransaction[];
+};
+
+async function loadAccountActivity(
+  address: Address,
+  network: ArcNetworkKey,
+  bypassCache = false,
+): Promise<ActivityResponse> {
+  const query = new URLSearchParams({ address, network });
+  if (bypassCache) query.set("refresh", String(Date.now()));
+  const response = await fetch(`/api/activity?${query}`, {
+    cache: bypassCache ? "no-store" : "default",
+  });
+  const payload = (await response.json()) as ActivityResponse & {
+    code?: string;
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(payload.code ?? payload.error ?? "INDEXER_UNAVAILABLE");
   }
-  return events;
+  return payload;
 }
 
-function createCachedLoader<T>(load: () => Promise<T>) {
-  let cachedRequest: Promise<T> | null = null;
-
-  return {
-    load() {
-      if (!cachedRequest) {
-        const request = load().catch((error) => {
-          if (cachedRequest === request) cachedRequest = null;
-          throw error;
-        });
-        cachedRequest = request;
-      }
-      return cachedRequest;
-    },
-    invalidate() {
-      cachedRequest = null;
-    },
-  };
+function decodeSentTip(log: ActivityLog): Tip | null {
+  if (!log.timestamp || !log.transactionHash || log.topics.length === 0) return null;
+  try {
+    const decoded = decodeEventLog({
+      abi: arcTipJarAbi,
+      data: log.data,
+      topics: log.topics,
+      strict: true,
+    });
+    if (decoded.eventName !== "TipReceived") return null;
+    return {
+      index: BigInt(log.blockNumber) * 100_000n + BigInt(log.logIndex),
+      sender: decoded.args.sender,
+      recipient: decoded.args.recipient,
+      amount: decoded.args.amount,
+      timestamp: BigInt(log.timestamp),
+      message: decoded.args.message,
+      txHash: log.transactionHash,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function getErrorUiMessage(
@@ -217,6 +213,9 @@ function getErrorUiMessage(
       normalizedDetail.includes("user denied")
     ) {
       return { key: "status.error.walletRequestRejected" };
+    }
+    if (detail === "INDEXER_NOT_CONFIGURED") {
+      return { key: "status.refresh.historyIndexerNotConfigured" };
     }
     return { key: fallbackKey, values: { error: detail } };
   }
@@ -241,6 +240,8 @@ export default function App() {
   const [sentTips, setSentTips] = useState<Tip[]>([]);
   const [sentTipCount, setSentTipCount] = useState(0);
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
+  const [receivedTipTxHashes, setReceivedTipTxHashes] = useState<Record<string, Hash>>({});
+  const [claimTxHashes, setClaimTxHashes] = useState<Record<string, Hash>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSentHistoryLoading, setIsSentHistoryLoading] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -281,28 +282,9 @@ export default function App() {
     () =>
       createPublicClient({
         chain,
-        transport: http(selectedNetwork.browserRpcUrl),
+        transport: http(selectedNetwork.browserRpcUrl, { retryCount: 0 }),
       }),
     [chain, selectedNetwork.browserRpcUrl],
-  );
-  const contractEventLoader = useMemo(
-    () =>
-      createCachedLoader(async () => {
-        const historyToBlock = await withRpcRetry(() => publicClient.getBlockNumber());
-        return getContractEventsInChunks(
-          selectedNetwork.contractDeploymentBlock,
-          historyToBlock,
-          (fromBlock, toBlock) =>
-            publicClient.getContractEvents({
-              address: contractAddress,
-              abi: arcTipJarAbi,
-              fromBlock,
-              toBlock,
-              strict: true,
-            }),
-        );
-      }),
-    [contractAddress, publicClient, selectedNetwork.contractDeploymentBlock],
   );
   const isCorrectNetwork = chainId === chain.id;
   const gasReserve = parseUnits("0.01", 18);
@@ -354,6 +336,22 @@ export default function App() {
               : !recipientAddress
                 ? t("send.cta.checkRecipient")
                 : t("send.cta.sendAmount", { amount: formatUsdc(parsedTipAmount, locale) });
+  const receivedTipsWithTransactions = useMemo(
+    () =>
+      receivedTips.map((tip) => ({
+        ...tip,
+        txHash: receivedTipTxHashes[tip.index.toString()] ?? null,
+      })),
+    [receivedTipTxHashes, receivedTips],
+  );
+  const claimsWithTransactions = useMemo(
+    () =>
+      claims.map((claim) => ({
+        ...claim,
+        txHash: claimTxHashes[claim.index.toString()] ?? null,
+      })),
+    [claimTxHashes, claims],
+  );
   const remainingAfterTip =
     walletBalance !== null && parsedTipAmount !== null && walletBalance >= parsedTipAmount
       ? walletBalance - parsedTipAmount
@@ -370,7 +368,7 @@ export default function App() {
       const jarAddress = account;
       const contract = { address: contractAddress, abi: arcTipJarAbi } as const;
       const [balance, claimableCount, totalReceived, totalClaimed, tipCount, claimCount] =
-        await withRpcRetry(() =>
+        await withRpcQueue(() =>
           publicClient.multicall({
             allowFailure: false,
             contracts: [
@@ -398,23 +396,15 @@ export default function App() {
         if (tipIndexes.length === 0) {
           setReceivedTips([]);
         } else {
-          const [tipResults, contractEvents] = await Promise.all([
-            withRpcRetry(() =>
-              publicClient.multicall({
-                allowFailure: false,
-                contracts: tipIndexes.map((index) => ({
-                  ...contract,
-                  functionName: "getRecipientTip" as const,
-                  args: [jarAddress, index] as const,
-                })),
-              }),
-            ),
-            contractEventLoader.load(),
-          ]);
-          const receivedLogs = contractEvents.filter(
-            (log) =>
-              log.eventName === "TipReceived" &&
-              log.args.recipient.toLowerCase() === jarAddress.toLowerCase(),
+          const tipResults = await withRpcQueue(() =>
+            publicClient.multicall({
+              allowFailure: false,
+              contracts: tipIndexes.map((index) => ({
+                ...contract,
+                functionName: "getRecipientTip" as const,
+                args: [jarAddress, index] as const,
+              })),
+            }),
           );
           if (!isCurrentRequest()) return;
           setReceivedTips(
@@ -425,7 +415,7 @@ export default function App() {
               amount: tipAmount,
               timestamp,
               message: tipMessage,
-              txHash: receivedLogs[Number(tipIndexes[offset])]?.transactionHash ?? null,
+              txHash: null,
             })),
           );
         }
@@ -446,7 +436,7 @@ export default function App() {
         if (claimIndexes.length === 0) {
           setClaims([]);
         } else {
-          const claimResults = await withRpcRetry(() =>
+          const claimResults = await withRpcQueue(() =>
             publicClient.multicall({
               allowFailure: false,
               contracts: claimIndexes.map((index) => ({
@@ -456,18 +446,13 @@ export default function App() {
               })),
             }),
           );
-          const claimLogs = (await contractEventLoader.load()).filter(
-            (log) =>
-              log.eventName === "Claimed" &&
-              log.args.recipient.toLowerCase() === jarAddress.toLowerCase(),
-          );
           if (!isCurrentRequest()) return;
           setClaims(
             claimResults.map(([claimAmount, timestamp], offset): ClaimRecord => ({
               index: claimIndexes[offset],
               amount: claimAmount,
               timestamp,
-              txHash: claimLogs[Number(claimIndexes[offset])]?.transactionHash ?? null,
+              txHash: null,
             })),
           );
         }
@@ -487,7 +472,7 @@ export default function App() {
       if (isCurrentRequest()) setIsLoading(false);
     }
     return refreshSucceeded && isCurrentRequest();
-  }, [account, contractAddress, contractEventLoader, publicClient]);
+  }, [account, contractAddress, publicClient]);
   const refreshWalletBalance = useCallback(async () => {
     if (!account) {
       setWalletBalance(null);
@@ -496,7 +481,7 @@ export default function App() {
 
     const requestContext = activeDataContextRef.current;
     try {
-      const nextBalance = await withRpcRetry(() =>
+      const nextBalance = await withRpcQueue(() =>
         publicClient.getBalance({ address: account }),
       );
       if (activeDataContextRef.current === requestContext) setWalletBalance(nextBalance);
@@ -504,10 +489,12 @@ export default function App() {
       if (activeDataContextRef.current === requestContext) setWalletBalance(null);
     }
   }, [account, publicClient]);
-  const refreshSentHistory = useCallback(async () => {
+  const refreshActivity = useCallback(async (bypassCache = false) => {
     if (!account) {
       setSentTips([]);
       setSentTipCount(0);
+      setReceivedTipTxHashes({});
+      setClaimTxHashes({});
       setIsSentHistoryLoading(false);
       setSentHistoryError(null);
       return;
@@ -517,42 +504,47 @@ export default function App() {
     setIsSentHistoryLoading(true);
     setSentHistoryError(null);
     try {
-      const sentLogs = (await contractEventLoader.load()).filter(
-        (log) =>
-          log.eventName === "TipReceived" &&
-          log.args.sender.toLowerCase() === account.toLowerCase(),
+      const activity = await loadAccountActivity(
+        account,
+        selectedNetworkKey,
+        bypassCache,
       );
       if (activeDataContextRef.current !== requestContext) return;
-      setSentTipCount(sentLogs.length);
-      const latestSentLogs = sentLogs.slice(-8).reverse();
-      const sentTipHistory = latestSentLogs.flatMap((log): Tip[] => {
-        if (
-          log.eventName !== "TipReceived" ||
-          log.blockTimestamp === null ||
-          log.blockTimestamp === undefined ||
-          !log.transactionHash
-        ) return [];
-        return [{
-          index: BigInt(log.logIndex ?? 0),
-          sender: log.args.sender,
-          recipient: log.args.recipient,
-          amount: log.args.amount,
-          timestamp: log.blockTimestamp,
-          message: log.args.message,
-          txHash: log.transactionHash,
-        }];
-      });
-      setSentTips(sentTipHistory);
+      setSentTipCount(activity.sentTipCount);
+      setSentTips(
+        activity.sentTips.flatMap((log): Tip[] => {
+          const tip = decodeSentTip(log);
+          return tip ? [tip] : [];
+        }),
+      );
+      setReceivedTipTxHashes(
+        Object.fromEntries(
+          activity.receivedTipTransactions.map(({ index, transactionHash }) => [
+            String(index),
+            transactionHash,
+          ]),
+        ),
+      );
+      setClaimTxHashes(
+        Object.fromEntries(
+          activity.claimTransactions.map(({ index, transactionHash }) => [
+            String(index),
+            transactionHash,
+          ]),
+        ),
+      );
     } catch (error) {
       if (activeDataContextRef.current === requestContext) {
-        setSentHistoryError(getErrorUiMessage(error, "status.refresh.sentHistoryFailed"));
+        setSentHistoryError(
+          getErrorUiMessage(error, "status.refresh.sentHistoryFailed"),
+        );
       }
     } finally {
       if (activeDataContextRef.current === requestContext) {
         setIsSentHistoryLoading(false);
       }
     }
-  }, [account, contractEventLoader]);
+  }, [account, selectedNetworkKey]);
   async function refreshAllData() {
     if (!account || isLoading || isSentHistoryLoading) return;
     if (refreshAllPromiseRef.current) return refreshAllPromiseRef.current;
@@ -569,11 +561,10 @@ export default function App() {
       }, 10_000);
       setJarStatus(null);
       setSentHistoryError(null);
-      contractEventLoader.invalidate();
       await Promise.all([
         refreshData(),
         refreshWalletBalance(),
-        refreshSentHistory(),
+        refreshActivity(true),
       ]);
     })();
 
@@ -662,10 +653,12 @@ export default function App() {
   useEffect(() => {
     setSentTips([]);
     setSentTipCount(0);
+    setReceivedTipTxHashes({});
+    setClaimTxHashes({});
     setSentHistoryError(null);
     setSendTxHash(null);
-    if (account) void refreshSentHistory();
-  }, [account, refreshSentHistory, selectedNetworkKey]);
+    if (account) void refreshActivity();
+  }, [account, refreshActivity, selectedNetworkKey]);
   useEffect(() => {
     const provider = window.ethereum;
     if (!provider?.on) return;
@@ -1031,8 +1024,11 @@ export default function App() {
       setAmount("0.01");
       setAmountPercentage(0);
       setMessage("");
-      contractEventLoader.invalidate();
-      await Promise.all([refreshData(), refreshWalletBalance(), refreshSentHistory()]);
+      await Promise.all([
+        refreshData(),
+        refreshWalletBalance(),
+        refreshActivity(true),
+      ]);
     } catch (error) {
       if (isCurrentOperation()) setSendStatus(getErrorUiMessage(error));
     } finally {
@@ -1078,8 +1074,11 @@ export default function App() {
       await publicClient.waitForTransactionReceipt({ hash });
       if (!isCurrentOperation()) return;
       setClaimStatus({ key: "status.claim.confirmed", values: { network: chain.name } });
-      contractEventLoader.invalidate();
-      await Promise.all([refreshData(), refreshWalletBalance()]);
+      await Promise.all([
+        refreshData(),
+        refreshWalletBalance(),
+        refreshActivity(true),
+      ]);
     } catch (error) {
       if (isCurrentOperation()) setClaimStatus(getErrorUiMessage(error));
     } finally {
@@ -1432,7 +1431,7 @@ export default function App() {
                       <p className="muted">{t("claim.historyEmpty")}</p>
                     ) : (
                       <ol className="claim-list compact-list">
-                        {claims.map((claim) => (
+                        {claimsWithTransactions.map((claim) => (
                           <li key={claim.index.toString()}>
                             <div className="history-main">
                               <strong>
@@ -2042,7 +2041,7 @@ export default function App() {
                   <p className="muted">{t("latestTips.empty")}</p>
                 ) : (
                   <ol className="tip-list">
-                    {receivedTips.map((tip) => (
+                    {receivedTipsWithTransactions.map((tip) => (
                       <li key={tip.index.toString()}>
                         <div className="tip-main">
                           <strong>
