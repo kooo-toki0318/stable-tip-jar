@@ -145,7 +145,9 @@
     "copySenderTitle": "送信者アドレスをコピー",
     "senderCopiedTitle": "送信者アドレスをコピーしました",
     "tipThisPerson": "この人にチップ",
-    "tipThisPersonAria": "{{address}} にチップを送る"
+    "tipThisPersonAria": "{{address}} にチップを送る",
+    "showMore": "さらに{{count}}件を表示",
+    "showLess": "6件表示に戻す"
   },
   "refresh": {
     "updatedAt": "{{time}} に更新",
@@ -175,8 +177,7 @@
       "latestTipsFailed": "最新のチップを更新できませんでした。最後に読み込んだデータを表示しています。{{error}}",
       "claimHistoryFailed": "受取履歴を更新できませんでした。最後に読み込んだデータを表示しています。{{error}}",
       "jarDataFailed": "Jarデータを更新できませんでした。最後に読み込んだデータを表示しています。{{error}}",
-      "sentHistoryFailed": "送信履歴を更新できませんでした。{{error}}",
-      "historyIndexerNotConfigured": "履歴インデクサーが未設定です。Cloudflare PagesにENVIO_API_TOKENを登録してください。残高・送信・Claimは引き続き利用できます。"
+      "sentHistoryFailed": "送信履歴を更新できませんでした。{{error}}"
     },
     "send": {
       "walletRequired": "先にウォレットを接続してください。",

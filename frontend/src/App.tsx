@@ -111,6 +111,7 @@ function CopyIcon({ copied }: { copied: boolean }) {
   );
 }
 
+const LATEST_TIPS_COLLAPSED_COUNT = 6;
 const RPC_MIN_INTERVAL_MS = 250;
 let rpcQueue: Promise<void> = Promise.resolve();
 let lastRpcRequestAt = 0;
@@ -214,9 +215,6 @@ function getErrorUiMessage(
     ) {
       return { key: "status.error.walletRequestRejected" };
     }
-    if (detail === "INDEXER_NOT_CONFIGURED") {
-      return { key: "status.refresh.historyIndexerNotConfigured" };
-    }
     return { key: fallbackKey, values: { error: detail } };
   }
   return { key: "status.error.generic" };
@@ -237,6 +235,7 @@ export default function App() {
   const [stats, setStats] = useState<JarStats>(emptyStats);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
   const [receivedTips, setReceivedTips] = useState<Tip[]>([]);
+  const [showAllLatestTips, setShowAllLatestTips] = useState(false);
   const [sentTips, setSentTips] = useState<Tip[]>([]);
   const [sentTipCount, setSentTipCount] = useState(0);
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
@@ -343,6 +342,13 @@ export default function App() {
         txHash: receivedTipTxHashes[tip.index.toString()] ?? null,
       })),
     [receivedTipTxHashes, receivedTips],
+  );
+  const visibleReceivedTips = showAllLatestTips
+    ? receivedTipsWithTransactions
+    : receivedTipsWithTransactions.slice(0, LATEST_TIPS_COLLAPSED_COUNT);
+  const hiddenLatestTipCount = Math.max(
+    receivedTipsWithTransactions.length - LATEST_TIPS_COLLAPSED_COUNT,
+    0,
   );
   const claimsWithTransactions = useMemo(
     () =>
@@ -624,6 +630,7 @@ export default function App() {
     setStats(emptyStats);
     setWalletBalance(null);
     setReceivedTips([]);
+    setShowAllLatestTips(false);
     setClaims([]);
     setJarStatus(null);
     setSendStatus(null);
@@ -2040,8 +2047,9 @@ export default function App() {
                 ) : receivedTips.length === 0 ? (
                   <p className="muted">{t("latestTips.empty")}</p>
                 ) : (
-                  <ol className="tip-list">
-                    {receivedTipsWithTransactions.map((tip) => (
+                  <div className="latest-tips-content">
+                    <ol id="latest-tips-list" className="tip-list">
+                      {visibleReceivedTips.map((tip) => (
                       <li key={tip.index.toString()}>
                         <div className="tip-main">
                           <strong>
@@ -2153,8 +2161,25 @@ export default function App() {
                           </div>
                         )}
                       </li>
-                    ))}
-                  </ol>
+                      ))}
+                    </ol>
+
+                    {hiddenLatestTipCount > 0 && (
+                      <button
+                        className="latest-tips-toggle"
+                        type="button"
+                        aria-controls="latest-tips-list"
+                        aria-expanded={showAllLatestTips}
+                        onClick={() => setShowAllLatestTips((current) => !current)}
+                      >
+                        {showAllLatestTips
+                          ? t("latestTips.showLess")
+                          : t("latestTips.showMore", {
+                              count: formatCount(hiddenLatestTipCount, locale),
+                            })}
+                      </button>
+                    )}
+                  </div>
                 )}
               </article>
             </div>

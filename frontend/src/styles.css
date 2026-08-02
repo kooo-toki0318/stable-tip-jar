@@ -705,7 +705,31 @@ textarea:focus {
   list-style: none;
 }
 
+.latest-tips-content {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.latest-tips-toggle {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  color: #9cf5c5;
+  background: rgba(105, 245, 173, 0.07);
+  border: 1px solid rgba(105, 245, 173, 0.2);
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.latest-tips-toggle:hover {
+  background: rgba(105, 245, 173, 0.13);
+  border-color: rgba(105, 245, 173, 0.38);
+}
+
 .tip-list li {
+  min-width: 0;
   padding: 17px 18px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.075);
@@ -714,6 +738,8 @@ textarea:focus {
 
 .tip-main {
   display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
