@@ -12,7 +12,11 @@ import {
   type Hex,
   type LocalAccount,
 } from "viem";
-import { createBundlerClient } from "viem/account-abstraction";
+import {
+  createBundlerClient,
+  toWebAuthnAccount,
+  type WebAuthnAccount,
+} from "viem/account-abstraction";
 import { generateMnemonic, mnemonicToAccount } from "viem/accounts";
 import { english } from "viem/accounts";
 import { arcTipJarAbi } from "./abi";
@@ -54,6 +58,17 @@ export type RecoveryResult = CircleReceipt & {
   session: PasskeyWalletSession;
 };
 
+export function passkeyCredentialToOwner(credential: {
+  id: string;
+  publicKey: Hex;
+  rpId?: string;
+}): WebAuthnAccount {
+  return toWebAuthnAccount({
+    credential,
+    rpId: credential.rpId,
+  });
+}
+
 type CircleRuntime = Awaited<ReturnType<typeof loadCircleRuntime>>;
 
 function getCircleConfig() {
@@ -88,7 +103,7 @@ function assertSuccessfulReceipt(receipt: {
 
 async function buildPasskeySession(
   runtime: CircleRuntime,
-  owner: Awaited<ReturnType<CircleRuntime["circle"]["toWebAuthnCredential"]>>,
+  owner: WebAuthnAccount,
   forcedAddress?: Address,
 ): Promise<PasskeyWalletSession> {
   const smartAccount = await runtime.circle.toCircleSmartAccount({
@@ -165,7 +180,7 @@ export async function createPasskeyWallet(
   mode: "register" | "login",
 ): Promise<PasskeyWalletSession> {
   const runtime = await loadCircleRuntime();
-  const owner = await runtime.circle.toWebAuthnCredential({
+  const credential = await runtime.circle.toWebAuthnCredential({
     transport: runtime.passkeyTransport,
     mode:
       mode === "register"
@@ -174,6 +189,7 @@ export async function createPasskeyWallet(
     username:
       mode === "register" ? `arc-tip-jar-${crypto.randomUUID()}` : undefined,
   });
+  const owner = passkeyCredentialToOwner(credential);
   try {
     return await buildPasskeySession(runtime, owner);
   } catch (error) {
@@ -372,7 +388,11 @@ export async function recoverPasskeyWallet(
   });
   const receipt = await recoveryBundler.waitForUserOperationReceipt({ hash });
   const transactionHash = assertSuccessfulReceipt(receipt);
-  const session = await buildPasskeySession(runtime, credential, walletAddress);
+  const session = await buildPasskeySession(
+    runtime,
+    passkeyCredentialToOwner(credential),
+    walletAddress,
+  );
   if (!isAddressEqual(session.address, walletAddress)) {
     throw new Error("RECOVERED_WALLET_MISMATCH");
   }

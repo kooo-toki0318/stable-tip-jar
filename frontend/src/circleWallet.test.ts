@@ -2,11 +2,25 @@ import { describe, expect, it } from "vitest";
 import {
   createRecoveryMnemonic,
   getArcModularClientUrl,
+  passkeyCredentialToOwner,
   recoveryProofMessage,
   selectRecoveryWalletAddress,
 } from "./circleWallet";
 
 describe("Circle transport configuration", () => {
+  it("converts a Circle credential into a Viem WebAuthn owner", () => {
+    const owner = passkeyCredentialToOwner({
+      id: "credential-id",
+      publicKey: "0x02",
+      rpId: "arc-tip-jar.pages.dev",
+    });
+
+    expect(owner.type).toBe("webAuthn");
+    expect(owner.id).toBe("credential-id");
+    expect(owner.publicKey).toBe("0x02");
+    expect(owner.sign).toBeTypeOf("function");
+  });
+
   it("appends the required Arc Testnet path only to the modular client URL", () => {
     expect(
       getArcModularClientUrl("https://modular-sdk.circle.com/v1/rpc/w3s/buidl"),
