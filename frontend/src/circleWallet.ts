@@ -265,7 +265,7 @@ export function recoveryProofMessage(args: {
   recoveryAddress: Address;
 }): string {
   return [
-    "USDC Tip Jar recovery signer registration",
+    "Stable Tip Jar recovery signer registration",
     `Smart account: ${getAddress(args.walletAddress)}`,
     `Recovery address: ${getAddress(args.recoveryAddress)}`,
     `Chain ID: ${arcTestnet.id}`,

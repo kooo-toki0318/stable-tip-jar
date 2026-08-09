@@ -1,6 +1,6 @@
-# USDC Tip Jar
+# Stable Tip Jar
 
-USDC Tip Jar is a recipient-based tipping dApp built on Arc Testnet. It lets
+Stable Tip Jar is a recipient-based tipping dApp built on Arc Testnet. It lets
 anyone send native USDC to a wallet-specific tip jar with a short onchain
 message. Each recipient controls their own balance and can claim it directly
 from the same wallet address.
@@ -11,7 +11,7 @@ from the same wallet address.
 - Contract: [0x44FD57...4E8668](https://testnet.arcscan.app/address/0x44FD57BaeaAC3D2F0a20a8032840E00bd44E8668)
 - Network: Arc Testnet (chain ID `5042002`)
 
-> USDC Tip Jar is an experimental testnet application. Testnet USDC has no
+> Stable Tip Jar is an experimental testnet application. Testnet USDC has no
 > real-world value.
 
 ## What it does

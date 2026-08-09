@@ -1,5 +1,5 @@
 {
-  "name": "USDC Tip Jar",
+  "name": "Stable Tip Jar",
 
   "build": {
     "dockerfile": "Dockerfile",

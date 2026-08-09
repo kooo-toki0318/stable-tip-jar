@@ -1,6 +1,6 @@
-# USDC Tip Jar frontend
+# Stable Tip Jar frontend
 
-A small React/Vite frontend for the USDC Tip Jar contract.
+A small React/Vite frontend for the Stable Tip Jar contract.
 
 ## Local development
 

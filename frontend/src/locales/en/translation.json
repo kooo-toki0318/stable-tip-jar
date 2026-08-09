@@ -6,8 +6,8 @@
     "japanese": "日本語"
   },
   "brand": {
-    "name": "USDC Tip Jar",
-    "homeAria": "USDC Tip Jar home",
+    "name": "Stable Tip Jar",
+    "homeAria": "Stable Tip Jar home",
     "builtOn": "BUILT ON {{network}}"
   },
   "common": {
@@ -228,10 +228,10 @@
   },
   "pages": {
     "tip": {
-      "documentTitle": "USDC Tip Jar · Send and receive USDC tips"
+      "documentTitle": "Stable Tip Jar · Send and receive USDC tips"
     },
     "bridge": {
-      "documentTitle": "Bridge USDC to Arc · USDC Tip Jar",
+      "documentTitle": "Bridge USDC to Arc · Stable Tip Jar",
       "eyebrow": "CCTP · ARC TESTNET",
       "title": "Move USDC to Arc. One wallet end to end.",
       "description": "Send USDC from Ethereum, Base, or Arbitrum Sepolia with your connected Browser Wallet and receive it at the same address on Arc.",
@@ -249,7 +249,7 @@
   },
   "footer": {
     "testnetDisclaimer": "Experimental testnet dApp. Testnet USDC has no real-world value.",
-    "mainnetDescription": "USDC Tip Jar on Mainnet."
+    "mainnetDescription": "Stable Tip Jar on Mainnet."
   },
   "passkey": {
     "title": "Circle Passkey Wallet",
