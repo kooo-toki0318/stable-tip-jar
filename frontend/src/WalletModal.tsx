@@ -28,7 +28,11 @@ import {
   type InjectedWallet,
 } from "./eip6963";
 
-export type WalletModalView = "choose" | "passkey" | "recover";
+export type WalletModalView =
+  | "choose"
+  | "passkey"
+  | "backup"
+  | "recover";
 
 type PublicRecoveryMetadata = {
   method: "browser" | "phrase";
@@ -58,6 +62,7 @@ const RECOVERY_METADATA_KEY = "arc-tip-jar-recovery-metadata";
 const CONFIRMATION_INDEXES = [2, 6, 10];
 
 function stageFromView(view: WalletModalView): ModalStage {
+  if (view === "backup") return "backup";
   if (view === "recover") return "recover";
   if (view === "passkey") return "passkey";
   return "choose";
@@ -166,12 +171,14 @@ function MethodIcon({ children }: { children: string }) {
 export default function WalletModal({
   open,
   initialView,
+  activePasskeySession,
   onClose,
   onConnectBrowser,
   onActivatePasskey,
 }: {
   open: boolean;
   initialView: WalletModalView;
+  activePasskeySession: PasskeyWalletSession | null;
   onClose: () => void;
   onConnectBrowser: () => Promise<boolean>;
   onActivatePasskey: (session: PasskeyWalletSession) => void;
@@ -220,15 +227,32 @@ export default function WalletModal({
 
   useEffect(() => {
     if (!open) return;
-    setStage(stageFromView(initialView));
+    const backupSession =
+      initialView === "backup" ? activePasskeySession : null;
+    const savedMetadata = readRecoveryMetadata();
+    const savedBackupMatches = Boolean(
+      backupSession &&
+        savedMetadata &&
+        isAddressEqual(backupSession.address, savedMetadata.walletAddress),
+    );
+    setStage(
+      initialView === "backup" && !backupSession
+        ? "passkey"
+        : stageFromView(initialView),
+    );
     setRecoveryReturnStage(
       initialView === "passkey" ? "passkey" : "choose",
     );
     setStatus(null);
     setWorking(null);
-    setCreatedSession(null);
-    setBrowserBackupComplete(false);
-    setPhraseBackupComplete(false);
+    setCreatedSession(backupSession);
+    setMetadata(savedMetadata);
+    setBrowserBackupComplete(
+      savedBackupMatches && savedMetadata?.method === "browser",
+    );
+    setPhraseBackupComplete(
+      savedBackupMatches && savedMetadata?.method === "phrase",
+    );
     setPendingRecoveredSession(null);
     setRecoveryPhraseInput("");
     clearMnemonic();

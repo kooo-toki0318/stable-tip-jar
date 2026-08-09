@@ -277,7 +277,7 @@ export default function App() {
   const [browserProvider, setBrowserProvider] =
     useState<BrowserEthereumProvider | null>(null);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const [walletModalView, setWalletModalView] = useState<"choose" | "passkey" | "recover">(
+  const [walletModalView, setWalletModalView] = useState<"choose" | "passkey" | "backup" | "recover">(
     "choose",
   );
   const [chainId, setChainId] = useState<number | null>(null);
@@ -859,7 +859,7 @@ export default function App() {
   }, [activeWalletKind, browserProvider]);
 
   function openWalletModal(
-    view: "choose" | "passkey" | "recover" = "choose",
+    view: "choose" | "passkey" | "backup" | "recover" = "choose",
   ) {
     setWalletModalView(view);
     setWalletModalOpen(true);
@@ -1398,34 +1398,91 @@ export default function App() {
               </select>
             </label>
 
-            <button
-              className={"wallet-button " + (account ? "connected" : "")}
-              type="button"
-              onClick={account ? disconnectWallet : () => openWalletModal()}
-              disabled={isConnecting}
-              aria-label={
-                account
-                  ? t("header.disconnectWalletAria", { address: account })
-                  : t("header.connectWalletAria")
-              }
-              title={account ?? undefined}
-            >
-              {account ? (
-                <>
-                  <span className="wallet-kind-dot" aria-hidden="true" />
-                  <span className="wallet-address">
-                    {shortAddress(account)}
+            <div className="header-wallet-cluster">
+              {account && (
+                <button
+                  className="header-passkey-link"
+                  type="button"
+                  onClick={() =>
+                    openWalletModal(
+                      activeWalletKind === "passkey" ? "backup" : "passkey",
+                    )
+                  }
+                >
+                  <span className="header-passkey-label-full">
+                    {t(
+                      activeWalletKind === "passkey"
+                        ? "header.passkeyActionBackup"
+                        : "header.passkeyActionCreate",
+                    )}
                   </span>
-                  <span className="wallet-action">
-                    {t("header.disconnect")}
+                  <span className="header-passkey-label-compact">
+                    {t(
+                      activeWalletKind === "passkey"
+                        ? "header.passkeyActionBackupShort"
+                        : "header.passkeyActionCreateShort",
+                    )}
                   </span>
-                </>
-              ) : isConnecting ? (
-                t("header.connecting")
-              ) : (
-                t("header.connectWallet")
+                </button>
               )}
-            </button>
+
+              <div className="header-wallet-control">
+                <button
+                  className={"wallet-button " + (account ? "connected" : "")}
+                  type="button"
+                  onClick={account ? disconnectWallet : () => openWalletModal()}
+                  disabled={isConnecting}
+                  aria-label={
+                    account
+                      ? t("header.disconnectWalletAria", { address: account })
+                      : t("header.connectWalletAria")
+                  }
+                  title={account ?? undefined}
+                >
+                  {account ? (
+                    <>
+                      <span className="wallet-kind-dot" aria-hidden="true" />
+                      <span className="wallet-address">
+                        {shortAddress(account)}
+                      </span>
+                      <span className="wallet-action">
+                        {t("header.disconnect")}
+                      </span>
+                    </>
+                  ) : isConnecting ? (
+                    t("header.connecting")
+                  ) : (
+                    t("header.connectWallet")
+                  )}
+                </button>
+
+                {account && (
+                  <button
+                    className="header-address-copy"
+                    type="button"
+                    aria-label={t("header.copyWalletAddressAria", {
+                      address: account,
+                    })}
+                    title={
+                      copiedTargetId === "header-wallet-address"
+                        ? t("header.walletAddressCopied")
+                        : t("header.copyWalletAddress")
+                    }
+                    onClick={() =>
+                      void copyToClipboard(
+                        account,
+                        "header-wallet-address",
+                        "header.walletAddressCopied",
+                      )
+                    }
+                  >
+                    <CopyIcon
+                      copied={copiedTargetId === "header-wallet-address"}
+                    />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -2599,6 +2656,7 @@ export default function App() {
         <WalletModal
           open={walletModalOpen}
           initialView={walletModalView}
+          activePasskeySession={passkeySession}
           onClose={() => setWalletModalOpen(false)}
           onConnectBrowser={connectWallet}
           onActivatePasskey={activatePasskeyWallet}

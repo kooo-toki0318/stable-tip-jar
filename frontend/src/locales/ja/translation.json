@@ -33,7 +33,14 @@
     "connectWalletAria": "ウォレットを接続",
     "disconnectWalletAria": "ウォレット {{address}} を切断",
     "dismissWalletStatusAria": "ウォレットの通知を閉じる",
-    "activePasskey": "Passkey"
+    "activePasskey": "Passkey",
+    "passkeyActionCreate": "Passkey Walletを作成・復旧",
+    "passkeyActionCreateShort": "Passkey",
+    "passkeyActionBackup": "Passkey Walletをバックアップ",
+    "passkeyActionBackupShort": "Backup",
+    "copyWalletAddressAria": "接続中ウォレット {{address}} をコピー",
+    "copyWalletAddress": "ウォレットアドレスをコピー",
+    "walletAddressCopied": "ウォレットアドレスをコピーしました"
   },
   "hero": {
     "connectedTitleLine1": "感謝を届けよう。",

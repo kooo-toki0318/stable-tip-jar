@@ -33,7 +33,14 @@
     "connectWalletAria": "Connect wallet",
     "disconnectWalletAria": "Disconnect wallet {{address}}",
     "dismissWalletStatusAria": "Dismiss wallet status",
-    "activePasskey": "Passkey"
+    "activePasskey": "Passkey",
+    "passkeyActionCreate": "Create or Restore Passkey Wallet",
+    "passkeyActionCreateShort": "Passkey",
+    "passkeyActionBackup": "Back up Passkey Wallet",
+    "passkeyActionBackupShort": "Backup",
+    "copyWalletAddressAria": "Copy connected wallet {{address}}",
+    "copyWalletAddress": "Copy wallet address",
+    "walletAddressCopied": "Wallet address copied"
   },
   "hero": {
     "connectedTitleLine1": "Send thanks.",
