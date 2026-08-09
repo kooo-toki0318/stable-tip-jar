@@ -43,16 +43,7 @@ import type { PasskeyWalletSession } from "./circleWallet";
 import { isIsolatedWalletRequestActive } from "./eip6963";
 import { appPageFromHash, type AppPage } from "./appPage";
 
-const PasskeyControls = lazy(() =>
-  import("./WalletFeatures").then((module) => ({
-    default: module.PasskeyControls,
-  })),
-);
-const RecoveryPanel = lazy(() =>
-  import("./WalletFeatures").then((module) => ({
-    default: module.RecoveryPanel,
-  })),
-);
+const WalletModal = lazy(() => import("./WalletModal"));
 const BridgePanel = lazy(() =>
   import("./WalletFeatures").then((module) => ({
     default: module.BridgePanel,
@@ -283,6 +274,12 @@ export default function App() {
   >("browser");
   const [passkeySession, setPasskeySession] =
     useState<PasskeyWalletSession | null>(null);
+  const [browserProvider, setBrowserProvider] =
+    useState<BrowserEthereumProvider | null>(null);
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [walletModalView, setWalletModalView] = useState<"choose" | "recover">(
+    "choose",
+  );
   const [chainId, setChainId] = useState<number | null>(null);
   const [selectedNetworkKey, setSelectedNetworkKey] =
     useState<ArcNetworkKey>("testnet");
@@ -746,6 +743,7 @@ export default function App() {
       window.ethereum.request({ method: "eth_chainId" }) as Promise<string>,
     ]);
 
+    setBrowserProvider(window.ethereum);
     setAccount(accounts[0] ?? null);
     setRecipientInput(accounts[0] ?? "");
     const nextChainId = Number.parseInt(walletChainId, 16);
@@ -823,7 +821,7 @@ export default function App() {
   }, [account, refreshActivity, selectedNetworkKey]);
   useEffect(() => {
     if (activeWalletKind !== "browser") return;
-    const provider = window.ethereum;
+    const provider = browserProvider ?? window.ethereum;
     if (!provider?.on) return;
 
     const handleAccountsChanged = (...args: unknown[]) => {
@@ -858,12 +856,17 @@ export default function App() {
       provider.removeListener?.("accountsChanged", handleAccountsChanged);
       provider.removeListener?.("chainChanged", handleChainChanged);
     };
-  }, [activeWalletKind]);
+  }, [activeWalletKind, browserProvider]);
 
-  async function connectWallet() {
+  function openWalletModal(view: "choose" | "recover" = "choose") {
+    setWalletModalView(view);
+    setWalletModalOpen(true);
+  }
+
+  async function connectWallet(): Promise<boolean> {
     if (!window.ethereum) {
       setWalletStatus({ key: "status.wallet.providerMissing" });
-      return;
+      return false;
     }
 
     setIsConnecting(true);
@@ -875,6 +878,7 @@ export default function App() {
       const nextAccount = accounts[0] ?? null;
 
       window.localStorage.removeItem("arc-tip-jar-disconnected");
+      setBrowserProvider(window.ethereum);
       setActiveWalletKind("browser");
       setPasskeySession(null);
       setAccount(nextAccount);
@@ -899,8 +903,10 @@ export default function App() {
           values: { network: selectedNetwork.chain.name },
         });
       }
+      return Boolean(nextAccount);
     } catch (error) {
       setWalletStatus(getErrorUiMessage(error));
+      return false;
     } finally {
       setIsConnecting(false);
     }
@@ -918,7 +924,7 @@ export default function App() {
   }
 
   async function disconnectWallet() {
-    const provider = window.ethereum;
+    const provider = browserProvider ?? window.ethereum;
     try {
       if (provider && activeWalletKind === "browser") {
         const request = provider.request as unknown as (args: {
@@ -938,6 +944,7 @@ export default function App() {
       setAccount(null);
       setChainId(null);
       setPasskeySession(null);
+      setBrowserProvider(null);
       setActiveWalletKind("browser");
       setRecipientInput("");
       setRecipientNotice(null);
@@ -1331,7 +1338,7 @@ export default function App() {
             className="primary-navigation"
             aria-label={t("navigation.primaryAria")}
           >
-            {(["tip", "wallet", "bridge"] as const).map((page) => (
+            {(["tip", "bridge"] as const).map((page) => (
               <a
                 key={page}
                 href={`#/${page}`}
@@ -1392,7 +1399,7 @@ export default function App() {
             <button
               className={"wallet-button " + (account ? "connected" : "")}
               type="button"
-              onClick={account ? disconnectWallet : connectWallet}
+              onClick={account ? disconnectWallet : () => openWalletModal()}
               disabled={isConnecting}
               aria-label={
                 account
@@ -1489,7 +1496,7 @@ export default function App() {
               <button
                 className="onboarding-connect"
                 type="button"
-                onClick={() => void connectWallet()}
+                onClick={() => openWalletModal()}
                 disabled={isConnecting}
               >
                 {isConnecting
@@ -1499,16 +1506,21 @@ export default function App() {
               <small>{t("onboarding.walletSupport")}</small>
             </div>
 
-            <a className="onboarding-wallet-route" href="#/wallet">
-              <span className="route-card-icon" aria-hidden="true">
-                ⌁
-              </span>
-              <span>
-                <strong>{t("onboarding.passkeyTitle")}</strong>
-                <small>{t("onboarding.passkeyDescription")}</small>
-              </span>
-              <span aria-hidden="true">→</span>
-            </a>
+            <aside className="passkey-promo disconnected-passkey-promo">
+              <div>
+                <span className="section-label">{t("passkeyPromo.eyebrow")}</span>
+                <h3>{t("passkeyPromo.title")}</h3>
+                <p>{t("passkeyPromo.description")}</p>
+              </div>
+              <ul>
+                <li>{t("passkeyPromo.sponsored")}</li>
+                <li>{t("passkeyPromo.noExtension")}</li>
+                <li>{t("passkeyPromo.recoverable")}</li>
+              </ul>
+              <button type="button" onClick={() => openWalletModal()}>
+                {t("passkeyPromo.action")}
+              </button>
+            </aside>
 
             <ol className="onboarding-steps">
               <li>
@@ -1547,6 +1559,18 @@ export default function App() {
           </section>
         ) : (
           <div className="tip-connected-view" hidden={appPage !== "tip"}>
+            {activeWalletKind === "browser" && (
+              <aside className="passkey-promo connected-passkey-promo">
+                <div>
+                  <span className="section-label">{t("passkeyPromo.eyebrow")}</span>
+                  <h3>{t("passkeyPromo.connectedTitle")}</h3>
+                  <p>{t("passkeyPromo.connectedDescription")}</p>
+                </div>
+                <button type="button" onClick={() => openWalletModal()}>
+                  {t("passkeyPromo.action")}
+                </button>
+              </aside>
+            )}
             <div className="mobile-tabs" aria-label={t("navigation.viewsAria")}>
               <button
                 type="button"
@@ -2467,138 +2491,6 @@ export default function App() {
           </div>
         )}
 
-        {appPage === "wallet" && (
-          <section
-            className="product-page wallet-page"
-            aria-labelledby="wallet-page-title"
-          >
-            <div className="product-hero wallet-product-hero">
-              <div className="product-hero-copy">
-                <span className="section-label">
-                  {t("pages.wallet.eyebrow")}
-                </span>
-                <h1 id="wallet-page-title">
-                  {t(
-                    activeWalletKind === "passkey" && account
-                      ? "pages.wallet.connectedTitle"
-                      : "pages.wallet.title",
-                  )}
-                </h1>
-                <p>{t("pages.wallet.description")}</p>
-              </div>
-              <div className="wallet-orbit" aria-hidden="true">
-                <span className="orbit-core">A</span>
-                <span className="orbit-node orbit-passkey">Passkey</span>
-                <span className="orbit-node orbit-recovery">Recovery</span>
-              </div>
-            </div>
-
-            <div className="wallet-context-grid">
-              <article className="wallet-context-card">
-                <span className="context-kicker">
-                  {t("pages.wallet.activeLabel")}
-                </span>
-                <div className="context-status-row">
-                  <span
-                    className={account ? "status-light online" : "status-light"}
-                  />
-                  <strong>
-                    {account
-                      ? t(
-                          activeWalletKind === "passkey"
-                            ? "pages.wallet.passkeyActive"
-                            : "pages.wallet.browserActive",
-                        )
-                      : t("pages.wallet.noActiveWallet")}
-                  </strong>
-                </div>
-                <p>
-                  {account
-                    ? t("pages.wallet.activeAddress", {
-                        address: shortAddress(account),
-                      })
-                    : t("pages.wallet.noActiveDescription")}
-                </p>
-                {!account && (
-                  <button
-                    className="context-connect-button"
-                    type="button"
-                    onClick={() => void connectWallet()}
-                    disabled={isConnecting}
-                  >
-                    {isConnecting
-                      ? t("header.connecting")
-                      : t("pages.wallet.connectBrowser")}
-                  </button>
-                )}
-              </article>
-
-              <article className="wallet-promise-card">
-                <span className="context-kicker">
-                  {t("pages.wallet.whyLabel")}
-                </span>
-                <ul>
-                  <li>
-                    <span>01</span>
-                    {t("pages.wallet.benefitSponsored")}
-                  </li>
-                  <li>
-                    <span>02</span>
-                    {t("pages.wallet.benefitSeparated")}
-                  </li>
-                  <li>
-                    <span>03</span>
-                    {t("pages.wallet.benefitRecoverable")}
-                  </li>
-                </ul>
-              </article>
-            </div>
-
-            <Suspense
-              fallback={
-                <p className="feature-loading">{t("common.loading")}</p>
-              }
-            >
-              <div className="wallet-workflow">
-                <div className="workflow-step passkey-step">
-                  <div className="workflow-marker">
-                    <span>01</span>
-                    <div>
-                      <strong>{t("pages.wallet.passkeyStep")}</strong>
-                      <small>{t("pages.wallet.passkeyStepHint")}</small>
-                    </div>
-                  </div>
-                  <div className="feature-panel passkey-panel">
-                    <PasskeyControls
-                      session={
-                        activeWalletKind === "passkey" ? passkeySession : null
-                      }
-                      busy={isConnecting || isSending || isClaiming}
-                      onSession={activatePasskeyWallet}
-                    />
-                  </div>
-                </div>
-
-                <div className="workflow-step recovery-step">
-                  <div className="workflow-marker">
-                    <span>02</span>
-                    <div>
-                      <strong>{t("pages.wallet.recoveryStep")}</strong>
-                      <small>{t("pages.wallet.recoveryStepHint")}</small>
-                    </div>
-                  </div>
-                  <RecoveryPanel
-                    passkeySession={
-                      activeWalletKind === "passkey" ? passkeySession : null
-                    }
-                    onRecoveredSession={activatePasskeyWallet}
-                  />
-                </div>
-              </div>
-            </Suspense>
-          </section>
-        )}
-
         {appPage === "bridge" && (
           <section
             className="product-page bridge-page"
@@ -2638,56 +2530,48 @@ export default function App() {
               </div>
             </div>
 
-            {account ? (
+            {account && activeWalletKind === "browser" && browserProvider ? (
               <>
                 <div className="destination-banner">
                   <div>
                     <span className="status-light online" aria-hidden="true" />
-                    <span>{t("pages.bridge.destinationReady")}</span>
+                    <span>{t("pages.bridge.walletReady")}</span>
                   </div>
                   <strong>{shortAddress(account)}</strong>
-                  <small>
-                    {t(
-                      activeWalletKind === "passkey"
-                        ? "pages.bridge.passkeyDestination"
-                        : "pages.bridge.browserDestination",
-                    )}
-                  </small>
+                  <small>{t("pages.bridge.sameWalletRoute")}</small>
                 </div>
-                <Suspense
-                  fallback={
-                    <p className="feature-loading">{t("common.loading")}</p>
-                  }
-                >
+                <Suspense fallback={<p className="feature-loading">{t("common.loading")}</p>}>
                   <BridgePanel
-                    destinationAddress={account}
+                    walletAddress={account}
+                    provider={browserProvider}
                     onComplete={refreshWalletBalance}
                   />
                 </Suspense>
               </>
             ) : (
               <div className="bridge-access-gate">
-                <div className="gate-symbol" aria-hidden="true">
-                  ↘
-                </div>
+                <div className="gate-symbol" aria-hidden="true">↘</div>
                 <div>
-                  <span className="section-label">
-                    {t("pages.bridge.beforeBridge")}
-                  </span>
-                  <h2>{t("pages.bridge.connectTitle")}</h2>
-                  <p>{t("pages.bridge.connectDescription")}</p>
+                  <span className="section-label">{t("pages.bridge.beforeBridge")}</span>
+                  <h2>
+                    {t(
+                      activeWalletKind === "passkey" && account
+                        ? "pages.bridge.passkeyUnsupportedTitle"
+                        : "pages.bridge.connectTitle",
+                    )}
+                  </h2>
+                  <p>
+                    {t(
+                      activeWalletKind === "passkey" && account
+                        ? "pages.bridge.passkeyUnsupportedDescription"
+                        : "pages.bridge.connectDescription",
+                    )}
+                  </p>
                 </div>
                 <div className="gate-actions">
-                  <button
-                    type="button"
-                    onClick={() => void connectWallet()}
-                    disabled={isConnecting}
-                  >
-                    {isConnecting
-                      ? t("header.connecting")
-                      : t("pages.bridge.connectBrowser")}
+                  <button type="button" onClick={() => openWalletModal()}>
+                    {t("header.connectWallet")}
                   </button>
-                  <a href="#/wallet">{t("pages.bridge.usePasskey")} →</a>
                 </div>
               </div>
             )}
@@ -2705,6 +2589,16 @@ export default function App() {
           </a>
         </footer>
       </main>
+
+      <Suspense fallback={null}>
+        <WalletModal
+          open={walletModalOpen}
+          initialView={walletModalView}
+          onClose={() => setWalletModalOpen(false)}
+          onConnectBrowser={connectWallet}
+          onActivatePasskey={activatePasskeyWallet}
+        />
+      </Suspense>
     </>
   );
 }

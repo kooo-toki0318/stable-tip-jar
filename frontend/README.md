@@ -59,17 +59,17 @@ The app lazy-loads `@circle-fin/modular-wallets-core`, `@circle-fin/app-kit`, an
 
 ### UI routes
 
-The top navigation separates the product into `#/tip`, `#/wallet`, and `#/bridge`. Hash routing keeps direct navigation compatible with Cloudflare Pages without a catch-all rewrite. Tip/Claim never share a page with Passkey/Recovery or CCTP controls. Disconnected Wallet and Bridge pages show a focused connection gate; connected pages show the current Arc destination while preserving isolated Recovery and Bridge-source sessions.
+The top navigation contains `#/tip` and `#/bridge`. Hash routing keeps direct navigation compatible with Cloudflare Pages without a catch-all rewrite; the removed `#/wallet` route falls back to Tip Jar. Header, Tip, and Bridge connection actions open one shared modal with Browser Wallet connect, Passkey connect, Passkey creation, and recovery. Passkey creation advances directly to backup setup inside the same modal.
 
 ### Recovery
 
-Browser Wallet Recovery is the recommended default and uses EIP-6963 for explicit provider selection. Only public registration metadata is stored locally. The signer seed/private key is never requested. The alternative 12-word phrase exists only in memory while displayed or submitted; the app does not write it to Storage, logs, analytics, URLs, or clipboard. Recovery adds a new Passkey and does not revoke an old one.
+Browser Wallet Recovery is the recommended default. It opens the default injected Browser Wallet directly; EIP-6963 discovery is used only as a fallback when no legacy injected provider is exposed. Recovery requests remain isolated and do not change the active Tip Jar identity. Only public registration metadata is stored locally. The signer seed/private key is never requested. The alternative 12-word recovery phrase exists only in memory while displayed or submitted; the app does not write it to Storage, logs, analytics, URLs, or clipboard. Recovery adds a new Passkey and does not revoke an old one.
 
 Browser Wallet Recovery is marked Beta until MetaMask and Rabby complete the production smoke test.
 
 ### Bridge
 
-The Bridge panel supports Ethereum Sepolia, Base Sepolia, and Arbitrum Sepolia as sources and fixes the destination to the active Arc Testnet address. It uses CCTP, `useForwarder: true`, an explicit 60-second estimate, and resumable `retryBridge()` handling. App Kit analytics and error reporting are disabled.
+The Bridge panel supports Ethereum Sepolia, Base Sepolia, and Arbitrum Sepolia. The connected Browser Wallet EOA is both the source signer and the Arc recipient; cross-wallet bridging is intentionally not exposed. A Passkey Wallet is Arc-only and must be replaced by a Browser Wallet session before bridging. The panel uses CCTP with `useForwarder: true`, automatically estimates after valid input changes, refreshes estimates every 60 seconds, provides an icon-only manual refresh, and preserves resumable `retryBridge()` handling. App Kit analytics and error reporting are disabled.
 
 ## Checks
 

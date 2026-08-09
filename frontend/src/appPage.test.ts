@@ -4,7 +4,6 @@ import { appPageFromHash } from "./appPage";
 describe("appPageFromHash", () => {
   it.each([
     ["#/tip", "tip"],
-    ["#/wallet", "wallet"],
     ["#/bridge", "bridge"],
   ])("maps %s to %s", (hash, expected) => {
     expect(appPageFromHash(hash)).toBe(expected);
@@ -13,5 +12,6 @@ describe("appPageFromHash", () => {
   it("falls back to Tip Jar for unknown and empty hashes", () => {
     expect(appPageFromHash("")).toBe("tip");
     expect(appPageFromHash("#/unknown")).toBe("tip");
+    expect(appPageFromHash("#/wallet")).toBe("tip");
   });
 });
