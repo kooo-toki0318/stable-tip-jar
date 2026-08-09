@@ -35,12 +35,16 @@
     "dismissWalletStatusAria": "Dismiss wallet status",
     "activePasskey": "Passkey",
     "passkeyActionCreate": "Create or Restore Passkey Wallet",
-    "passkeyActionCreateShort": "Passkey",
     "passkeyActionBackup": "Back up Passkey Wallet",
-    "passkeyActionBackupShort": "Backup",
     "copyWalletAddressAria": "Copy connected wallet {{address}}",
     "copyWalletAddress": "Copy wallet address",
-    "walletAddressCopied": "Wallet address copied"
+    "walletAddressCopied": "Wallet address copied",
+    "arcTestnet": "Arc · Testnet",
+    "arcMainnet": "Arc · Mainnet",
+    "arcMainnetSoon": "Arc · Mainnet soon",
+    "openWalletMenuAria": "Open connected wallet menu for {{address}}",
+    "browserWallet": "Browser Wallet",
+    "passkeyWallet": "Passkey Wallet"
   },
   "hero": {
     "connectedTitleLine1": "Send thanks.",

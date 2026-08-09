@@ -151,6 +151,43 @@ function CopyIcon({ copied }: { copied: boolean }) {
   );
 }
 
+function GlobeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17">
+      <circle
+        cx="12"
+        cy="12"
+        r="8.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <path
+        d="M3.8 12h16.4M12 3.5c2.1 2.3 3.2 5.1 3.2 8.5S14.1 18.2 12 20.5M12 3.5C9.9 5.8 8.8 8.6 8.8 12s1.1 6.2 3.2 8.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14">
+      <path
+        d="m4 6 4 4 4-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const LATEST_TIPS_COLLAPSED_COUNT = 6;
 const RPC_MIN_INTERVAL_MS = 250;
 let rpcQueue: Promise<void> = Promise.resolve();
@@ -277,6 +314,7 @@ export default function App() {
   const [browserProvider, setBrowserProvider] =
     useState<BrowserEthereumProvider | null>(null);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [walletModalView, setWalletModalView] = useState<"choose" | "passkey" | "backup" | "recover">(
     "choose",
   );
@@ -329,6 +367,7 @@ export default function App() {
   const copiedTargetId = clipboardFeedback?.success
     ? clipboardFeedback.targetId
     : null;
+  const headerWalletMenuRef = useRef<HTMLDivElement>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
   const networkSwitchButtonRef = useRef<HTMLButtonElement>(null);
   const recipientInputRef = useRef<HTMLInputElement>(null);
@@ -355,6 +394,31 @@ export default function App() {
   useEffect(() => {
     document.title = t("pages." + appPage + ".documentTitle");
   }, [appPage, t]);
+
+  useEffect(() => {
+    if (!walletMenuOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !headerWalletMenuRef.current?.contains(event.target)
+      ) {
+        setWalletMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setWalletMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [walletMenuOpen]);
+
+  useEffect(() => {
+    setWalletMenuOpen(false);
+  }, [account, activeWalletKind]);
 
   const selectedNetwork =
     arcNetworks[selectedNetworkKey] ?? arcNetworks.testnet!;
@@ -861,6 +925,7 @@ export default function App() {
   function openWalletModal(
     view: "choose" | "passkey" | "backup" | "recover" = "choose",
   ) {
+    setWalletMenuOpen(false);
     setWalletModalView(view);
     setWalletModalOpen(true);
   }
@@ -942,6 +1007,7 @@ export default function App() {
       // Not every injected wallet supports permission revocation. Ending the
       // local dApp session still prevents automatic reconnection.
     } finally {
+      setWalletMenuOpen(false);
       window.localStorage.setItem("arc-tip-jar-disconnected", "true");
       setAccount(null);
       setChainId(null);
@@ -1366,7 +1432,8 @@ export default function App() {
               </a>
             </div>
 
-            <label className="network-select-label">
+            <label className="header-utility-control network-select-label">
+              <span className="header-network-dot" aria-hidden="true" />
               <span className="sr-only">{t("header.networkLabel")}</span>
               <select
                 aria-label={t("header.networkLabel")}
@@ -1375,16 +1442,17 @@ export default function App() {
                   void selectNetwork(event.target.value as ArcNetworkKey)
                 }
               >
-                <option value="testnet">{t("header.testnet")}</option>
+                <option value="testnet">{t("header.arcTestnet")}</option>
                 <option value="mainnet" disabled={!arcNetworks.mainnet}>
                   {arcNetworks.mainnet
-                    ? t("header.mainnet")
-                    : t("header.mainnetSoon")}
+                    ? t("header.arcMainnet")
+                    : t("header.arcMainnetSoon")}
                 </option>
               </select>
             </label>
 
-            <label className="language-select-label">
+            <label className="header-utility-control language-select-label">
+              <GlobeIcon />
               <span className="sr-only">{t("language.label")}</span>
               <select
                 aria-label={t("language.selectAria")}
@@ -1398,90 +1466,108 @@ export default function App() {
               </select>
             </label>
 
-            <div className="header-wallet-cluster">
-              {account && (
+            <div className="header-wallet-menu-root" ref={headerWalletMenuRef}>
+              {account ? (
                 <button
-                  className="header-passkey-link"
+                  className="wallet-identity-button"
                   type="button"
-                  onClick={() =>
-                    openWalletModal(
-                      activeWalletKind === "passkey" ? "backup" : "passkey",
-                    )
-                  }
+                  aria-haspopup="menu"
+                  aria-expanded={walletMenuOpen}
+                  aria-controls="header-wallet-menu"
+                  aria-label={t("header.openWalletMenuAria", {
+                    address: account,
+                  })}
+                  onClick={() => setWalletMenuOpen((current) => !current)}
                 >
-                  <span className="header-passkey-label-full">
+                  <span className="wallet-kind-dot" aria-hidden="true" />
+                  <span className="wallet-address">{shortAddress(account)}</span>
+                  <ChevronDownIcon />
+                </button>
+              ) : (
+                <button
+                  className="wallet-button"
+                  type="button"
+                  onClick={() => openWalletModal()}
+                  disabled={isConnecting}
+                  aria-label={t("header.connectWalletAria")}
+                >
+                  {isConnecting
+                    ? t("header.connecting")
+                    : t("header.connectWallet")}
+                </button>
+              )}
+
+              {account && walletMenuOpen && (
+                <div
+                  id="header-wallet-menu"
+                  className="header-wallet-menu"
+                  role="menu"
+                >
+                  <div className="wallet-menu-identity">
+                    <span className="wallet-menu-kind">
+                      {t(
+                        activeWalletKind === "passkey"
+                          ? "header.passkeyWallet"
+                          : "header.browserWallet",
+                      )}
+                    </span>
+                    <div className="wallet-menu-address-row">
+                      <code>{account}</code>
+                      <button
+                        className="wallet-menu-copy"
+                        type="button"
+                        role="menuitem"
+                        aria-label={t("header.copyWalletAddressAria", {
+                          address: account,
+                        })}
+                        title={
+                          copiedTargetId === "header-wallet-address"
+                            ? t("header.walletAddressCopied")
+                            : t("header.copyWalletAddress")
+                        }
+                        onClick={() =>
+                          void copyToClipboard(
+                            account,
+                            "header-wallet-address",
+                            "header.walletAddressCopied",
+                          )
+                        }
+                      >
+                        <CopyIcon
+                          copied={copiedTargetId === "header-wallet-address"}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    className="wallet-menu-passkey-action"
+                    type="button"
+                    role="menuitem"
+                    onClick={() =>
+                      openWalletModal(
+                        activeWalletKind === "passkey" ? "backup" : "passkey",
+                      )
+                    }
+                  >
                     {t(
                       activeWalletKind === "passkey"
                         ? "header.passkeyActionBackup"
                         : "header.passkeyActionCreate",
                     )}
-                  </span>
-                  <span className="header-passkey-label-compact">
-                    {t(
-                      activeWalletKind === "passkey"
-                        ? "header.passkeyActionBackupShort"
-                        : "header.passkeyActionCreateShort",
-                    )}
-                  </span>
-                </button>
-              )}
-
-              <div className="header-wallet-control">
-                <button
-                  className={"wallet-button " + (account ? "connected" : "")}
-                  type="button"
-                  onClick={account ? disconnectWallet : () => openWalletModal()}
-                  disabled={isConnecting}
-                  aria-label={
-                    account
-                      ? t("header.disconnectWalletAria", { address: account })
-                      : t("header.connectWalletAria")
-                  }
-                  title={account ?? undefined}
-                >
-                  {account ? (
-                    <>
-                      <span className="wallet-kind-dot" aria-hidden="true" />
-                      <span className="wallet-address">
-                        {shortAddress(account)}
-                      </span>
-                      <span className="wallet-action">
-                        {t("header.disconnect")}
-                      </span>
-                    </>
-                  ) : isConnecting ? (
-                    t("header.connecting")
-                  ) : (
-                    t("header.connectWallet")
-                  )}
-                </button>
-
-                {account && (
-                  <button
-                    className="header-address-copy"
-                    type="button"
-                    aria-label={t("header.copyWalletAddressAria", {
-                      address: account,
-                    })}
-                    title={
-                      copiedTargetId === "header-wallet-address"
-                        ? t("header.walletAddressCopied")
-                        : t("header.copyWalletAddress")
-                    }
-                    onClick={() =>
-                      void copyToClipboard(
-                        account,
-                        "header-wallet-address",
-                        "header.walletAddressCopied",
-                      )
-                    }
-                  >
-                    <CopyIcon
-                      copied={copiedTargetId === "header-wallet-address"}
-                    />
+                    <span aria-hidden="true">→</span>
                   </button>
-                )}
-              </div>
+
+                  <button
+                    className="wallet-menu-disconnect"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void disconnectWallet()}
+                  >
+                    {t("header.disconnect")}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

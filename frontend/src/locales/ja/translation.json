@@ -35,12 +35,16 @@
     "dismissWalletStatusAria": "ウォレットの通知を閉じる",
     "activePasskey": "Passkey",
     "passkeyActionCreate": "Passkey Walletを作成・復旧",
-    "passkeyActionCreateShort": "Passkey",
     "passkeyActionBackup": "Passkey Walletをバックアップ",
-    "passkeyActionBackupShort": "Backup",
     "copyWalletAddressAria": "接続中ウォレット {{address}} をコピー",
     "copyWalletAddress": "ウォレットアドレスをコピー",
-    "walletAddressCopied": "ウォレットアドレスをコピーしました"
+    "walletAddressCopied": "ウォレットアドレスをコピーしました",
+    "arcTestnet": "Arc · Testnet",
+    "arcMainnet": "Arc · Mainnet",
+    "arcMainnetSoon": "Arc · Mainnet 準備中",
+    "openWalletMenuAria": "接続中ウォレット {{address}} のメニューを開く",
+    "browserWallet": "Browser Wallet",
+    "passkeyWallet": "Passkey Wallet"
   },
   "hero": {
     "connectedTitleLine1": "感謝を届けよう。",
