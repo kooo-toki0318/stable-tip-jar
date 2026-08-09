@@ -17,6 +17,7 @@ import {
   toWebAuthnAccount,
   type WebAuthnAccount,
 } from "viem/account-abstraction";
+import { validateMnemonic } from "@scure/bip39";
 import { generateMnemonic, mnemonicToAccount } from "viem/accounts";
 import { english } from "viem/accounts";
 import { arcTipJarAbi } from "./abi";
@@ -104,12 +105,10 @@ function assertSuccessfulReceipt(receipt: {
 async function buildPasskeySession(
   runtime: CircleRuntime,
   owner: WebAuthnAccount,
-  forcedAddress?: Address,
 ): Promise<PasskeyWalletSession> {
   const smartAccount = await runtime.circle.toCircleSmartAccount({
     client: runtime.modularClient,
     owner,
-    address: forcedAddress,
   });
   const bundler = createBundlerClient({
     account: smartAccount,
@@ -162,12 +161,17 @@ async function buildPasskeySession(
       return waitForReceipt(hash);
     },
     async registerRecovery(recoveryAddress) {
-      const recoveryBundler = bundler.extend(runtime.circle.recoveryActions);
-      const hash = await recoveryBundler.registerRecoveryAddress({
-        recoveryAddress,
-        paymaster: true,
-      });
-      return waitForReceipt(hash);
+      try {
+        const recoveryBundler = bundler.extend(runtime.circle.recoveryActions);
+        const hash = await recoveryBundler.registerRecoveryAddress({
+          account: smartAccount,
+          recoveryAddress,
+          paymaster: true,
+        });
+        return await waitForReceipt(hash);
+      } catch (error) {
+        throw new Error("RECOVERY_REGISTRATION_FAILED", { cause: error });
+      }
     },
   };
 }
@@ -260,11 +264,15 @@ export async function registerBrowserRecovery(args: {
   provider: EIP1193Provider;
   recoveryAddress: Address;
 }): Promise<RecoveryRegistration> {
-  await proveRecoveryAddress({
-    provider: args.provider,
-    recoveryAddress: args.recoveryAddress,
-    walletAddress: args.session.address,
-  });
+  try {
+    await proveRecoveryAddress({
+      provider: args.provider,
+      recoveryAddress: args.recoveryAddress,
+      walletAddress: args.session.address,
+    });
+  } catch (error) {
+    throw new Error("RECOVERY_SIGNATURE_FAILED", { cause: error });
+  }
   const receipt = await args.session.registerRecovery(args.recoveryAddress);
   const mappingMatches = await verifyRecoveryMapping({
     recoveryAddress: args.recoveryAddress,
@@ -287,15 +295,25 @@ export function createRecoveryMnemonic(): {
 }
 
 export function recoveryAccountFromMnemonic(mnemonic: string): LocalAccount {
-  return mnemonicToAccount(mnemonic.trim().toLowerCase());
+  const normalized = normalizeRecoveryMnemonic(mnemonic);
+  if (!validateMnemonic(normalized, english)) {
+    throw new Error("RECOVERY_PHRASE_INVALID");
+  }
+  return mnemonicToAccount(normalized);
+}
+
+export function normalizeRecoveryMnemonic(mnemonic: string): string {
+  return mnemonic.trim().toLowerCase().split(/\s+/).join(" ");
+}
+
+export function isValidRecoveryMnemonic(mnemonic: string): boolean {
+  return validateMnemonic(normalizeRecoveryMnemonic(mnemonic), english);
 }
 
 export async function browserWalletToRecoveryAccount(args: {
   provider: EIP1193Provider;
   address: Address;
 }): Promise<LocalAccount> {
-  const runtime = await loadCircleRuntime();
-  void runtime;
   const walletClient = createWalletClient({
     account: args.address,
     chain: arcTestnet,
@@ -344,7 +362,6 @@ export async function recoverPasskeyWallet(
   const temporarySmartAccount = await runtime.circle.toCircleSmartAccount({
     client: runtime.modularClient,
     owner: recoveryOwner,
-    address: walletAddress,
   });
   if (!isAddressEqual(temporarySmartAccount.address, walletAddress)) {
     throw new Error("RECOVERY_SMART_ACCOUNT_MISMATCH");
@@ -383,6 +400,7 @@ export async function recoverPasskeyWallet(
     transport: runtime.transport,
   }).extend(runtime.circle.recoveryActions);
   const hash = await recoveryBundler.executeRecovery({
+    account: temporarySmartAccount,
     credential,
     paymaster: true,
   });
@@ -391,7 +409,6 @@ export async function recoverPasskeyWallet(
   const session = await buildPasskeySession(
     runtime,
     passkeyCredentialToOwner(credential),
-    walletAddress,
   );
   if (!isAddressEqual(session.address, walletAddress)) {
     throw new Error("RECOVERED_WALLET_MISMATCH");

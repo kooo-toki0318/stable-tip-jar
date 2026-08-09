@@ -14,6 +14,7 @@ import {
   browserWalletToRecoveryAccount,
   createPasskeyWallet,
   createRecoveryMnemonic,
+  isValidRecoveryMnemonic,
   isCircleConfigured,
   recoverPasskeyWallet,
   recoveryAccountFromMnemonic,
@@ -42,6 +43,12 @@ type PublicRecoveryMetadata = {
   registrationTransactionHash: Hash;
 };
 
+type RecoveryWalletSession = {
+  wallet: InjectedWallet;
+  address: Address;
+  chainId: number;
+};
+
 type ModalStage =
   | "choose"
   | "passkey"
@@ -50,6 +57,7 @@ type ModalStage =
   | "recovered";
 type WorkingAction =
   | "browser-connect"
+  | "recovery-connect"
   | "passkey-login"
   | "passkey-create"
   | "browser-backup"
@@ -72,17 +80,38 @@ function shortAddress(address: Address): string {
   return address.slice(0, 6) + "…" + address.slice(-4);
 }
 
+function errorMessages(error: unknown): string[] {
+  const messages: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    if (current instanceof Error) {
+      messages.push(current.message);
+      current = current.cause;
+    } else {
+      break;
+    }
+  }
+  return messages;
+}
+
 function cleanError(error: unknown): string {
-  if (!(error instanceof Error)) return "REQUEST_FAILED";
-  const normalized = error.message.toLowerCase();
+  const messages = errorMessages(error);
+  if (messages.length === 0) return "REQUEST_FAILED";
+  const normalized = messages.join("\n").toLowerCase();
   if (normalized.includes("user rejected") || normalized.includes("user denied")) {
     return "WALLET_REQUEST_REJECTED";
   }
-  const firstLine = error.message.split("\n")[0].trim();
+  if (normalized.includes("155203")) return "SMART_ACCOUNT_NONCE_INVALID";
+  if (normalized.includes("155505")) return "SMART_ACCOUNT_INITIALIZING";
+  if (normalized.includes("paymaster") || normalized.includes("sponsor")) {
+    return "RECOVERY_GAS_SPONSOR_FAILED";
+  }
   const safeCodes = new Set([
     "CIRCLE_CLIENT_KEY_MISSING",
     "PASSKEY_CREATED_WALLET_INIT_FAILED",
     "USER_OPERATION_REVERTED",
+    "RECOVERY_REGISTRATION_FAILED",
+    "RECOVERY_SIGNATURE_FAILED",
     "RECOVERY_SIGNATURE_MISMATCH",
     "RECOVERY_MAPPING_MISMATCH",
     "RECOVERY_MAPPING_NOT_FOUND",
@@ -92,30 +121,63 @@ function cleanError(error: unknown): string {
     "RECOVERED_WALLET_MISMATCH",
     "RECOVERY_ACCOUNT_MISMATCH",
     "RECOVERY_WALLET_REQUIRED",
+    "RECOVERY_PHRASE_INVALID",
   ]);
-  return safeCodes.has(firstLine) ? firstLine : "SDK_REQUEST_FAILED";
+  for (const message of messages) {
+    const firstLine = message.split("\n")[0].trim();
+    if (safeCodes.has(firstLine)) return firstLine;
+  }
+  return "SDK_REQUEST_FAILED";
 }
 
-function readRecoveryMetadata(): PublicRecoveryMetadata | null {
+function normalizeMetadata(
+  value: unknown,
+): PublicRecoveryMetadata | null {
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Partial<PublicRecoveryMetadata>;
+  if (
+    (parsed.method !== "browser" && parsed.method !== "phrase") ||
+    !parsed.registrationTransactionHash ||
+    !isAddress(parsed.recoveryAddress ?? "") ||
+    !isAddress(parsed.walletAddress ?? "")
+  ) {
+    return null;
+  }
+  return {
+    method: parsed.method,
+    recoveryAddress: getAddress(parsed.recoveryAddress!),
+    walletAddress: getAddress(parsed.walletAddress!),
+    registrationTransactionHash: parsed.registrationTransactionHash,
+    ...(parsed.walletName ? { walletName: parsed.walletName } : {}),
+  };
+}
+
+function readRecoveryMetadata(): PublicRecoveryMetadata[] {
   try {
     const raw = window.localStorage.getItem(RECOVERY_METADATA_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PublicRecoveryMetadata;
-    if (!isAddress(parsed.recoveryAddress) || !isAddress(parsed.walletAddress)) {
-      return null;
-    }
-    return {
-      ...parsed,
-      recoveryAddress: getAddress(parsed.recoveryAddress),
-      walletAddress: getAddress(parsed.walletAddress),
-    };
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    return entries
+      .map(normalizeMetadata)
+      .filter((entry): entry is PublicRecoveryMetadata => entry !== null);
   } catch {
-    return null;
+    return [];
   }
 }
 
-function saveRecoveryMetadata(metadata: PublicRecoveryMetadata): void {
-  window.localStorage.setItem(RECOVERY_METADATA_KEY, JSON.stringify(metadata));
+function saveRecoveryMetadata(
+  current: PublicRecoveryMetadata[],
+  metadata: PublicRecoveryMetadata,
+): PublicRecoveryMetadata[] {
+  const next = current.filter(
+    (entry) =>
+      entry.method !== metadata.method ||
+      !isAddressEqual(entry.walletAddress, metadata.walletAddress),
+  );
+  next.push(metadata);
+  window.localStorage.setItem(RECOVERY_METADATA_KEY, JSON.stringify(next));
+  return next;
 }
 
 function legacyWalletName(provider: EIP1193Provider): string {
@@ -193,14 +255,17 @@ export default function WalletModal({
   const [working, setWorking] = useState<WorkingAction>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [createdSession, setCreatedSession] = useState<PasskeyWalletSession | null>(null);
-  const [metadata, setMetadata] = useState<PublicRecoveryMetadata | null>(() =>
+  const [metadata, setMetadata] = useState<PublicRecoveryMetadata[]>(() =>
     readRecoveryMetadata(),
   );
+  const [recoveryWallet, setRecoveryWallet] =
+    useState<RecoveryWalletSession | null>(null);
   const [browserBackupComplete, setBrowserBackupComplete] = useState(false);
   const [phraseBackupComplete, setPhraseBackupComplete] = useState(false);
   const [mnemonic, setMnemonic] = useState<string | null>(null);
   const [mnemonicAccount, setMnemonicAccount] = useState<LocalAccount | null>(null);
-  const [confirmation, setConfirmation] = useState("");
+  const [confirmation, setConfirmation] = useState(["", "", ""]);
+  const [phraseCopied, setPhraseCopied] = useState(false);
   const [recoveryPhraseInput, setRecoveryPhraseInput] = useState("");
   const [pendingRecoveredSession, setPendingRecoveredSession] =
     useState<PasskeyWalletSession | null>(null);
@@ -213,13 +278,15 @@ export default function WalletModal({
     mnemonicRef.current = null;
     setMnemonic(null);
     setMnemonicAccount(null);
-    setConfirmation("");
+    setConfirmation(["", "", ""]);
+    setPhraseCopied(false);
   }
 
   function resetAndClose() {
     clearMnemonic();
     setRecoveryPhraseInput("");
     setPendingRecoveredSession(null);
+    setRecoveryWallet(null);
     setWorking(null);
     setStatus(null);
     onClose();
@@ -230,11 +297,11 @@ export default function WalletModal({
     const backupSession =
       initialView === "backup" ? activePasskeySession : null;
     const savedMetadata = readRecoveryMetadata();
-    const savedBackupMatches = Boolean(
-      backupSession &&
-        savedMetadata &&
-        isAddressEqual(backupSession.address, savedMetadata.walletAddress),
-    );
+    const savedForBackup = backupSession
+      ? savedMetadata.filter((entry) =>
+          isAddressEqual(backupSession.address, entry.walletAddress),
+        )
+      : [];
     setStage(
       initialView === "backup" && !backupSession
         ? "passkey"
@@ -248,11 +315,12 @@ export default function WalletModal({
     setCreatedSession(backupSession);
     setMetadata(savedMetadata);
     setBrowserBackupComplete(
-      savedBackupMatches && savedMetadata?.method === "browser",
+      savedForBackup.some((entry) => entry.method === "browser"),
     );
     setPhraseBackupComplete(
-      savedBackupMatches && savedMetadata?.method === "phrase",
+      savedForBackup.some((entry) => entry.method === "phrase"),
     );
+    setRecoveryWallet(null);
     setPendingRecoveredSession(null);
     setRecoveryPhraseInput("");
     clearMnemonic();
@@ -263,6 +331,33 @@ export default function WalletModal({
       document.body.style.overflow = previousOverflow;
     };
   }, [open, initialView]);
+
+  useEffect(() => {
+    if (!open || !recoveryWallet?.wallet.provider.on) return;
+    const provider = recoveryWallet.wallet.provider;
+    const handleAccountsChanged = (...args: unknown[]) => {
+      const accounts = (args[0] ?? []) as Address[];
+      if (
+        !accounts[0] ||
+        !isAddressEqual(accounts[0], recoveryWallet.address)
+      ) {
+        setRecoveryWallet(null);
+        setStatus(t("walletModal.recoveryWallet.accountChanged"));
+      }
+    };
+    const handleChainChanged = (...args: unknown[]) => {
+      const nextChainId = Number.parseInt(args[0] as string, 16);
+      setRecoveryWallet((current) =>
+        current ? { ...current, chainId: nextChainId } : current,
+      );
+    };
+    provider.on("accountsChanged", handleAccountsChanged);
+    provider.on("chainChanged", handleChainChanged);
+    return () => {
+      provider.removeListener?.("accountsChanged", handleAccountsChanged);
+      provider.removeListener?.("chainChanged", handleChainChanged);
+    };
+  }, [open, recoveryWallet?.wallet.provider, recoveryWallet?.address, t]);
 
   useEffect(() => {
     if (!open) return;
@@ -301,10 +396,33 @@ export default function WalletModal({
 
   const backupComplete = browserBackupComplete || phraseBackupComplete;
   const phraseWords = mnemonic?.split(" ") ?? [];
+  const currentBrowserBackup = createdSession
+    ? metadata.find(
+        (entry) =>
+          entry.method === "browser" &&
+          isAddressEqual(entry.walletAddress, createdSession.address),
+      )
+    : undefined;
   const expectedConfirmation = CONFIRMATION_INDEXES.map(
     (index) => phraseWords[index],
-  ).join(" ");
+  );
 
+  const confirmationComplete = confirmation.every(
+    (word) => word.trim().length > 0,
+  );
+  const recoveryPhraseWordCount = recoveryPhraseInput.trim()
+    ? recoveryPhraseInput.trim().split(/\s+/).length
+    : 0;
+  const recoveryPhraseValid =
+    recoveryPhraseWordCount === 12 &&
+    isValidRecoveryMnemonic(recoveryPhraseInput);
+
+  function modalError(error: unknown): string {
+    const code = cleanError(error);
+    return t("walletModal.error", {
+      error: t("walletModal.errors." + code, { defaultValue: code }),
+    });
+  }
   async function connectBrowser() {
     setWorking("browser-connect");
     setStatus(null);
@@ -335,47 +453,71 @@ export default function WalletModal({
       setStatus(
         code === "PASSKEY_CREATED_WALLET_INIT_FAILED"
           ? t("passkey.createdButInitFailed")
-          : t("walletModal.error", { error: code }),
+          : modalError(error),
       );
     } finally {
       setWorking(null);
     }
   }
 
-  async function connectRecoveryWallet(): Promise<{
-    wallet: InjectedWallet;
-    address: Address;
-    chainId: number;
-  }> {
-    const wallet = await getDefaultInjectedWallet();
-    const connected = await connectInjectedWallet(wallet);
-    return { wallet, ...connected };
+  async function connectRecoveryWallet() {
+    setWorking("recovery-connect");
+    setStatus(null);
+    try {
+      const wallet = await getDefaultInjectedWallet();
+      const connected = await connectInjectedWallet(wallet);
+      const session = { wallet, ...connected };
+      setRecoveryWallet(session);
+      setStatus(
+        t("walletModal.recoveryWallet.connected", {
+          wallet: wallet.name,
+          address: shortAddress(connected.address),
+        }),
+      );
+    } catch (error) {
+      setRecoveryWallet(null);
+      setStatus(modalError(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function disconnectRecoveryWallet() {
+    setRecoveryWallet(null);
+    setStatus(t("walletModal.recoveryWallet.disconnected"));
+  }
+
+  function matchingMetadata(method: "browser" | "phrase", address: Address) {
+    return metadata.find(
+      (entry) =>
+        entry.method === method &&
+        isAddressEqual(entry.recoveryAddress, address),
+    );
   }
 
   async function configureBrowserBackup() {
-    if (!createdSession) return;
+    if (!createdSession || !recoveryWallet) return;
     setWorking("browser-backup");
     setStatus(null);
     try {
-      const connected = await connectRecoveryWallet();
       const result = await registerBrowserRecovery({
         session: createdSession,
-        provider: connected.wallet.provider,
-        recoveryAddress: connected.address,
+        provider: recoveryWallet.wallet.provider,
+        recoveryAddress: recoveryWallet.address,
       });
       const next: PublicRecoveryMetadata = {
         method: "browser",
-        recoveryAddress: connected.address,
-        walletName: connected.wallet.name,
+        recoveryAddress: recoveryWallet.address,
+        walletName: recoveryWallet.wallet.name,
         walletAddress: result.walletAddress,
         registrationTransactionHash: result.transactionHash,
       };
-      saveRecoveryMetadata(next);
-      setMetadata(next);
+      const updated = saveRecoveryMetadata(metadata, next);
+      setMetadata(updated);
       setBrowserBackupComplete(true);
       setStatus(t("walletModal.backup.browserComplete"));
     } catch (error) {
-      setStatus(t("walletModal.error", { error: cleanError(error) }));
+      setStatus(modalError(error));
     } finally {
       setWorking(null);
     }
@@ -389,9 +531,39 @@ export default function WalletModal({
     setStatus(null);
   }
 
+  async function copyRecoveryPhrase() {
+    if (!mnemonic) return;
+    try {
+      await navigator.clipboard.writeText(mnemonic);
+      setPhraseCopied(true);
+      setStatus(t("recovery.phrase.copyWarning"));
+    } catch {
+      setStatus(t("recovery.phrase.copyFailed"));
+    }
+  }
+
+  function updateConfirmation(index: number, value: string) {
+    const normalized = value.replace(/\s+/g, "").toLowerCase();
+    setConfirmation((current) =>
+      current.map((word, itemIndex) =>
+        itemIndex === index ? normalized : word,
+      ),
+    );
+  }
+
+  function pasteConfirmation(value: string) {
+    const words = value.trim().toLowerCase().split(/\s+/).slice(0, 3);
+    if (words.length !== 3) return;
+    setConfirmation(words);
+  }
+
   async function configurePhraseBackup() {
     if (!createdSession || !mnemonicAccount) return;
-    if (confirmation.trim().toLowerCase() !== expectedConfirmation) {
+    const confirmationMatches = confirmation.every(
+      (word, index) =>
+        word.trim().toLowerCase() === expectedConfirmation[index],
+    );
+    if (!confirmationMatches) {
       setStatus(t("recovery.phrase.confirmMismatch"));
       return;
     }
@@ -410,13 +582,13 @@ export default function WalletModal({
         walletAddress: createdSession.address,
         registrationTransactionHash: receipt.transactionHash,
       };
-      saveRecoveryMetadata(next);
-      setMetadata(next);
+      const updated = saveRecoveryMetadata(metadata, next);
+      setMetadata(updated);
       setPhraseBackupComplete(true);
       setStatus(t("walletModal.backup.phraseComplete"));
       clearMnemonic();
     } catch (error) {
-      setStatus(t("walletModal.error", { error: cleanError(error) }));
+      setStatus(modalError(error));
       clearMnemonic();
     } finally {
       setWorking(null);
@@ -424,27 +596,34 @@ export default function WalletModal({
   }
 
   async function recoverWithBrowser() {
+    if (!recoveryWallet) return;
     setWorking("browser-recover");
     setStatus(null);
     try {
-      const connected = await connectRecoveryWallet();
-      if (metadata && !isAddressEqual(connected.address, metadata.recoveryAddress)) {
-        throw new Error("RECOVERY_ACCOUNT_MISMATCH");
-      }
-      if (connected.chainId !== arcTestnet.id) {
-        await switchProviderChain(connected.wallet.provider, arcTestnet.id, {
+      const registered = matchingMetadata("browser", recoveryWallet.address);
+      if (recoveryWallet.chainId !== arcTestnet.id) {
+        await switchProviderChain(recoveryWallet.wallet.provider, arcTestnet.id, {
           chainName: arcTestnet.name,
           nativeCurrency: arcTestnet.nativeCurrency,
           rpcUrls: [...arcTestnet.rpcUrls.default.http],
           blockExplorerUrls: [arcTestnet.blockExplorers.default.url],
         });
+        setRecoveryWallet((current) =>
+          current ? { ...current, chainId: arcTestnet.id } : current,
+        );
       }
       const owner = await browserWalletToRecoveryAccount({
-        provider: connected.wallet.provider,
-        address: connected.address,
+        provider: recoveryWallet.wallet.provider,
+        address: recoveryWallet.address,
       });
-      const result = await recoverPasskeyWallet(owner, metadata?.walletAddress);
-      if (metadata && !isAddressEqual(result.walletAddress, metadata.walletAddress)) {
+      const result = await recoverPasskeyWallet(
+        owner,
+        registered?.walletAddress,
+      );
+      if (
+        registered &&
+        !isAddressEqual(result.walletAddress, registered.walletAddress)
+      ) {
         throw new Error("RECOVERED_WALLET_MISMATCH");
       }
       setPendingRecoveredSession(result.session);
@@ -452,7 +631,7 @@ export default function WalletModal({
       setStage("recovered");
       setStatus(null);
     } catch (error) {
-      setStatus(t("walletModal.error", { error: cleanError(error) }));
+      setStatus(modalError(error));
     } finally {
       setWorking(null);
     }
@@ -464,11 +643,15 @@ export default function WalletModal({
     let owner: LocalAccount | null = null;
     try {
       owner = recoveryAccountFromMnemonic(recoveryPhraseInput);
-      if (metadata && !isAddressEqual(owner.address, metadata.recoveryAddress)) {
-        throw new Error("RECOVERY_ACCOUNT_MISMATCH");
-      }
-      const result = await recoverPasskeyWallet(owner, metadata?.walletAddress);
-      if (metadata && !isAddressEqual(result.walletAddress, metadata.walletAddress)) {
+      const registered = matchingMetadata("phrase", owner.address);
+      const result = await recoverPasskeyWallet(
+        owner,
+        registered?.walletAddress,
+      );
+      if (
+        registered &&
+        !isAddressEqual(result.walletAddress, registered.walletAddress)
+      ) {
         throw new Error("RECOVERED_WALLET_MISMATCH");
       }
       setPendingRecoveredSession(result.session);
@@ -477,7 +660,7 @@ export default function WalletModal({
       setStatus(null);
     } catch (error) {
       setRecoveryPhraseInput("");
-      setStatus(t("walletModal.error", { error: cleanError(error) }));
+      setStatus(modalError(error));
     } finally {
       owner = null;
       setWorking(null);
@@ -704,17 +887,73 @@ export default function WalletModal({
                     <span className="backup-state">{t("walletModal.backup.recommended")}</span>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void configureBrowserBackup()}
-                  disabled={working !== null || browserBackupComplete}
-                >
-                  {working === "browser-backup"
-                    ? t("walletModal.backup.registering")
-                    : browserBackupComplete
-                      ? t("walletModal.backup.browserComplete")
-                      : t("walletModal.backup.browserAction")}
-                </button>
+                {browserBackupComplete && currentBrowserBackup ? (
+                  <div className="recovery-wallet-connection complete">
+                    <div>
+                      <span>{t("walletModal.recoveryWallet.registeredSigner")}</span>
+                      <strong>{currentBrowserBackup.walletName ?? t("recovery.method.browser")}</strong>
+                      <code>{currentBrowserBackup.recoveryAddress}</code>
+                    </div>
+                    {recoveryWallet && (
+                      <button
+                        className="recovery-wallet-disconnect"
+                        type="button"
+                        onClick={disconnectRecoveryWallet}
+                        disabled={working !== null}
+                      >
+                        {t("walletModal.recoveryWallet.disconnect")}
+                      </button>
+                    )}
+                  </div>
+                ) : recoveryWallet ? (
+                  <>
+                    <div className="recovery-wallet-connection">
+                      {recoveryWallet.wallet.icon && (
+                        <img
+                          src={recoveryWallet.wallet.icon}
+                          alt=""
+                          width="36"
+                          height="36"
+                        />
+                      )}
+                      <div>
+                        <span>{t("walletModal.recoveryWallet.connectedSigner")}</span>
+                        <strong>{recoveryWallet.wallet.name}</strong>
+                        <code>{recoveryWallet.address}</code>
+                      </div>
+                      <button
+                        className="recovery-wallet-disconnect"
+                        type="button"
+                        onClick={disconnectRecoveryWallet}
+                        disabled={working !== null}
+                      >
+                        {t("walletModal.recoveryWallet.disconnect")}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void configureBrowserBackup()}
+                      disabled={working !== null}
+                    >
+                      {working === "browser-backup"
+                        ? t("walletModal.backup.registering")
+                        : t("walletModal.backup.browserSignAction")}
+                    </button>
+                    <small className="recovery-session-note">
+                      {t("walletModal.recoveryWallet.isolation")}
+                    </small>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void connectRecoveryWallet()}
+                    disabled={working !== null}
+                  >
+                    {working === "recovery-connect"
+                      ? t("header.connecting")
+                      : t("walletModal.backup.browserConnectAction")}
+                  </button>
+                )}
               </article>
 
               <article className={phraseBackupComplete ? "backup-option complete" : "backup-option"}>
@@ -741,6 +980,20 @@ export default function WalletModal({
                   </button>
                 ) : (
                   <div className="phrase-setup modal-phrase-setup">
+                    <div className="mnemonic-toolbar">
+                      <strong>{t("recovery.phrase.generatedTitle")}</strong>
+                      <button
+                        className="phrase-copy-button secondary-button"
+                        type="button"
+                        onClick={() => void copyRecoveryPhrase()}
+                        disabled={working !== null}
+                      >
+                        <span aria-hidden="true">{phraseCopied ? "✓" : "⧉"}</span>
+                        {phraseCopied
+                          ? t("recovery.phrase.copied")
+                          : t("recovery.phrase.copy")}
+                      </button>
+                    </div>
                     <ol className="mnemonic-words" aria-label={t("recovery.phrase.wordsAria")}>
                       {phraseWords.map((word, index) => (
                         <li key={index + "-" + word}>
@@ -749,20 +1002,46 @@ export default function WalletModal({
                       ))}
                     </ol>
                     <p className="feature-warning">{t("recovery.phrase.storeOffline")}</p>
-                    <label>
-                      {t("recovery.phrase.confirmLabel", { positions: "3, 7, 11" })}
-                      <input
-                        value={confirmation}
-                        autoComplete="off"
-                        spellCheck={false}
-                        onChange={(event) => setConfirmation(event.target.value)}
-                      />
-                    </label>
+                    <fieldset className="mnemonic-confirmation">
+                      <legend>{t("recovery.phrase.confirmTitle")}</legend>
+                      <p>{t("recovery.phrase.confirmExample")}</p>
+                      <div className="mnemonic-confirmation-fields">
+                        {CONFIRMATION_INDEXES.map((wordIndex, inputIndex) => (
+                          <label key={wordIndex}>
+                            <span>
+                              {t("recovery.phrase.confirmWordLabel", {
+                                position: wordIndex + 1,
+                              })}
+                            </span>
+                            <input
+                              value={confirmation[inputIndex]}
+                              autoCapitalize="none"
+                              autoComplete="off"
+                              spellCheck={false}
+                              placeholder={t("recovery.phrase.confirmPlaceholder")}
+                              aria-label={t("recovery.phrase.confirmWordAria", {
+                                position: wordIndex + 1,
+                              })}
+                              onPaste={(event) => {
+                                const pasted = event.clipboardData.getData("text");
+                                if (pasted.trim().split(/\s+/).length === 3) {
+                                  event.preventDefault();
+                                  pasteConfirmation(pasted);
+                                }
+                              }}
+                              onChange={(event) =>
+                                updateConfirmation(inputIndex, event.target.value)
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
                     <div className="feature-actions">
                       <button
                         type="button"
                         onClick={() => void configurePhraseBackup()}
-                        disabled={working !== null}
+                        disabled={working !== null || !confirmationComplete}
                       >
                         {working === "phrase-backup"
                           ? t("walletModal.backup.registering")
@@ -802,11 +1081,18 @@ export default function WalletModal({
             <div className="recovery-warning" role="note">
               {t("recovery.oldPasskeyWarning")}
             </div>
-            {metadata && (
-              <div className="registered-recovery">
+            {metadata.length > 0 && (
+              <div className="registered-recovery-list">
                 <span>{t("walletModal.recover.registered")}</span>
-                <strong>{t("recovery.method." + metadata.method)}</strong>
-                <small>{shortAddress(metadata.recoveryAddress)}</small>
+                {metadata.map((entry) => (
+                  <div
+                    className="registered-recovery"
+                    key={entry.method + "-" + entry.walletAddress}
+                  >
+                    <strong>{t("recovery.method." + entry.method)}</strong>
+                    <small>{shortAddress(entry.recoveryAddress)}</small>
+                  </div>
+                ))}
               </div>
             )}
             <div className="recovery-choice-grid">
@@ -817,15 +1103,52 @@ export default function WalletModal({
                 </div>
                 <h3>{t("walletModal.recover.browserTitle")}</h3>
                 <p>{t("walletModal.recover.browserHint")}</p>
-                <button
-                  type="button"
-                  onClick={() => void recoverWithBrowser()}
-                  disabled={working !== null}
-                >
-                  {working === "browser-recover"
-                    ? t("walletModal.recover.working")
-                    : t("walletModal.recover.browserAction")}
-                </button>
+                {recoveryWallet ? (
+                  <>
+                    <div className="recovery-wallet-connection compact">
+                      {recoveryWallet.wallet.icon && (
+                        <img
+                          src={recoveryWallet.wallet.icon}
+                          alt=""
+                          width="36"
+                          height="36"
+                        />
+                      )}
+                      <div>
+                        <span>{t("walletModal.recoveryWallet.connectedSigner")}</span>
+                        <strong>{recoveryWallet.wallet.name}</strong>
+                        <code>{recoveryWallet.address}</code>
+                      </div>
+                      <button
+                        className="recovery-wallet-disconnect"
+                        type="button"
+                        onClick={disconnectRecoveryWallet}
+                        disabled={working !== null}
+                      >
+                        {t("walletModal.recoveryWallet.disconnect")}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void recoverWithBrowser()}
+                      disabled={working !== null}
+                    >
+                      {working === "browser-recover"
+                        ? t("walletModal.recover.working")
+                        : t("walletModal.recover.browserAction")}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void connectRecoveryWallet()}
+                    disabled={working !== null}
+                  >
+                    {working === "recovery-connect"
+                      ? t("header.connecting")
+                      : t("walletModal.recover.browserConnectAction")}
+                  </button>
+                )}
               </article>
               <article className="recovery-choice">
                 <MethodIcon>12</MethodIcon>
@@ -834,6 +1157,8 @@ export default function WalletModal({
                 <label>
                   <span className="sr-only">{t("recovery.phrase.inputLabel")}</span>
                   <textarea
+                    id="recovery-phrase-input"
+                    aria-describedby="recovery-phrase-feedback"
                     value={recoveryPhraseInput}
                     autoComplete="off"
                     spellCheck={false}
@@ -841,11 +1166,31 @@ export default function WalletModal({
                     onChange={(event) => setRecoveryPhraseInput(event.target.value)}
                   />
                 </label>
+                <div
+                  id="recovery-phrase-feedback"
+                  className={
+                    recoveryPhraseWordCount === 12 && !recoveryPhraseValid
+                      ? "phrase-input-feedback invalid"
+                      : "phrase-input-feedback"
+                  }
+                  aria-live="polite"
+                >
+                  <span>
+                    {t("recovery.phrase.wordCount", {
+                      count: recoveryPhraseWordCount,
+                    })}
+                  </span>
+                  {recoveryPhraseWordCount === 12 && (
+                    <span>
+                      {t(recoveryPhraseValid ? "recovery.phrase.valid" : "recovery.phrase.invalid")}
+                    </span>
+                  )}
+                </div>
                 <button
                   className="secondary-button"
                   type="button"
                   onClick={() => void recoverWithPhrase()}
-                  disabled={working !== null || recoveryPhraseInput.trim().split(/\s+/).length !== 12}
+                  disabled={working !== null || !recoveryPhraseValid}
                 >
                   {working === "phrase-recover"
                     ? t("walletModal.recover.working")

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   createRecoveryMnemonic,
   getArcModularClientUrl,
+  isValidRecoveryMnemonic,
   passkeyCredentialToOwner,
+  recoveryAccountFromMnemonic,
   recoveryProofMessage,
   selectRecoveryWalletAddress,
 } from "./circleWallet";
@@ -57,9 +59,24 @@ describe("Circle recovery helpers", () => {
     ).toThrow("RECOVERY_MAPPING_NOT_FOUND");
   });
 
-  it("creates a twelve-word in-memory recovery phrase and matching EOA", () => {
+  it("creates and validates a twelve-word in-memory recovery phrase", () => {
     const generated = createRecoveryMnemonic();
     expect(generated.mnemonic.split(" ")).toHaveLength(12);
-    expect(generated.account.address).toMatch(/^0x[a-fA-F0-9]{40}$/);
+    expect(isValidRecoveryMnemonic(generated.mnemonic)).toBe(true);
+    expect(recoveryAccountFromMnemonic(generated.mnemonic).address).toBe(
+      generated.account.address,
+    );
+  });
+
+  it("rejects a twelve-word phrase with an invalid checksum", () => {
+    const generated = createRecoveryMnemonic();
+    const words = generated.mnemonic.split(" ");
+    words[11] = "notaword";
+    const invalid = words.join(" ");
+
+    expect(isValidRecoveryMnemonic(invalid)).toBe(false);
+    expect(() => recoveryAccountFromMnemonic(invalid)).toThrow(
+      "RECOVERY_PHRASE_INVALID",
+    );
   });
 });

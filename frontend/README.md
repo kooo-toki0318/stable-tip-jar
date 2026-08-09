@@ -63,7 +63,7 @@ The top navigation contains `#/tip` and `#/bridge`. Hash routing keeps direct na
 
 ### Recovery
 
-Browser Wallet Recovery is the recommended default. It opens the default injected Browser Wallet directly; EIP-6963 discovery is used only as a fallback when no legacy injected provider is exposed. Recovery requests remain isolated and do not change the active Tip Jar identity. Only public registration metadata is stored locally. The signer seed/private key is never requested. The alternative 12-word recovery phrase exists only in memory while displayed or submitted; the app does not write it to Storage, logs, analytics, URLs, or clipboard. Recovery adds a new Passkey and does not revoke an old one.
+Browser Wallet Recovery is the recommended default. It opens the default injected Browser Wallet directly; EIP-6963 discovery is used only as a fallback when no legacy injected provider is exposed. Recovery requests remain isolated and do not change the active Tip Jar identity. Only public registration metadata is stored locally. The signer seed/private key is never requested. The alternative 12-word recovery phrase exists only in memory while displayed or submitted; the app does not write it to Storage, logs, analytics, or URLs. The phrase is copied to the system clipboard only when the user explicitly selects `Copy 12 words`, and the UI warns the user to clear it afterward. Recovery adds a new Passkey and does not revoke an old one.
 
 Browser Wallet Recovery is marked Beta until MetaMask and Rabby complete the production smoke test.
 

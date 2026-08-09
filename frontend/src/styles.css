@@ -4124,3 +4124,199 @@ select:focus-visible {
     transition: none;
   }
 }
+/* Passkey recovery connection and phrase confirmation */
+.recovery-wallet-connection {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 12px;
+  color: #dce9e2;
+  background: rgba(105, 245, 173, 0.055);
+  border: 1px solid rgba(105, 245, 173, 0.2);
+  border-radius: 13px;
+}
+
+.recovery-wallet-connection.complete {
+  background: rgba(105, 245, 173, 0.075);
+}
+
+.recovery-wallet-connection img {
+  flex: 0 0 auto;
+  border-radius: 9px;
+}
+
+.recovery-wallet-connection > div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.recovery-wallet-connection span {
+  color: #7f958a;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.recovery-wallet-connection strong {
+  font-size: 0.8rem;
+}
+
+.recovery-wallet-connection code {
+  color: #a9bbb2;
+  font-size: 0.67rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet-modal .recovery-wallet-disconnect {
+  min-width: auto;
+  min-height: 44px;
+  padding: 8px 6px;
+  color: #d2aaa0;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 0.68rem;
+}
+
+.wallet-modal .recovery-wallet-disconnect:hover:not(:disabled) {
+  color: #ffd2c5;
+  background: rgba(255, 130, 91, 0.07);
+}
+
+.recovery-session-note {
+  color: #71887c;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.mnemonic-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mnemonic-toolbar > strong {
+  color: #dce9e2;
+  font-size: 0.78rem;
+}
+
+.wallet-modal .phrase-copy-button {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-height: 44px;
+  gap: 7px;
+  padding: 9px 12px;
+  font-size: 0.7rem;
+}
+
+.mnemonic-confirmation {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mnemonic-confirmation legend {
+  margin-bottom: 3px;
+  padding: 0;
+  color: #d8e6df;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.mnemonic-confirmation > p {
+  margin: 0 0 3px;
+  color: #81968b;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.mnemonic-confirmation-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.mnemonic-confirmation-fields label {
+  min-width: 0;
+}
+
+.mnemonic-confirmation-fields label > span {
+  color: #91a69b;
+  font-size: 0.7rem;
+}
+
+.phrase-input-feedback {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 22px;
+  color: #81968b;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.phrase-input-feedback.invalid {
+  color: #e3a995;
+}
+
+.registered-recovery-list {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  background: rgba(105, 245, 173, 0.04);
+  border: 1px solid rgba(105, 245, 173, 0.16);
+  border-radius: 14px;
+}
+
+.registered-recovery-list > span {
+  color: #7f958a;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.registered-recovery-list .registered-recovery {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px 10px;
+}
+
+.recovery-choice .recovery-wallet-connection {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 520px) {
+  .mnemonic-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .wallet-modal .phrase-copy-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .mnemonic-confirmation-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .recovery-wallet-connection {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .wallet-modal .recovery-wallet-disconnect {
+    margin-left: auto;
+  }
+
+  .phrase-input-feedback {
+    flex-direction: column;
+    gap: 3px;
+  }
+}
