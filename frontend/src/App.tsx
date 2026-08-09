@@ -1503,7 +1503,13 @@ export default function App() {
                   ? t("header.connecting")
                   : t("header.connectWallet")}
               </button>
-              <small>{t("onboarding.walletSupport")}</small>
+              <button
+                className="onboarding-passkey-action"
+                type="button"
+                onClick={() => openWalletModal()}
+              >
+                {t("passkeyPromo.action")}
+              </button>
             </div>
 
             <aside className="passkey-promo disconnected-passkey-promo">
@@ -1517,9 +1523,6 @@ export default function App() {
                 <li>{t("passkeyPromo.noExtension")}</li>
                 <li>{t("passkeyPromo.recoverable")}</li>
               </ul>
-              <button type="button" onClick={() => openWalletModal()}>
-                {t("passkeyPromo.action")}
-              </button>
             </aside>
 
             <ol className="onboarding-steps">

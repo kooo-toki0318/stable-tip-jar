@@ -47,7 +47,6 @@
     "sectionLabel": "HOW IT WORKS",
     "title": "One wallet. One message. Onchain forever.",
     "walletNotConnected": "Wallet not connected",
-    "walletSupport": "Connect with a Browser Wallet or create a dedicated Passkey Wallet for Arc.",
     "connectTitle": "Connect",
     "connectDescription": "Approve the request in your wallet.",
     "recipientTitle": "Choose a recipient",

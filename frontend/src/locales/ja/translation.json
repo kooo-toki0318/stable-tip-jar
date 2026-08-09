@@ -47,7 +47,6 @@
     "sectionLabel": "使い方",
     "title": "ウォレットひとつ、メッセージひとつ。ずっとオンチェーンに。",
     "walletNotConnected": "ウォレット未接続",
-    "walletSupport": "Browser Walletでも、Arc専用のPasskey Walletを作成しても接続できます。",
     "connectTitle": "接続",
     "connectDescription": "ウォレットで接続リクエストを承認します。",
     "recipientTitle": "送り先を選択",
