@@ -57,6 +57,10 @@ Create a production Modular Wallets Client Key in Circle Console and register th
 
 The app lazy-loads `@circle-fin/modular-wallets-core`, `@circle-fin/app-kit`, and `@circle-fin/adapter-viem-v2`. Viem is pinned to `2.45.3` to match Modular Wallets SDK `1.0.15`. Passkey operations use Gas Station with `paymaster: true` and never fall back to user-paid gas automatically.
 
+### UI routes
+
+The top navigation separates the product into `#/tip`, `#/wallet`, and `#/bridge`. Hash routing keeps direct navigation compatible with Cloudflare Pages without a catch-all rewrite. Tip/Claim never share a page with Passkey/Recovery or CCTP controls. Disconnected Wallet and Bridge pages show a focused connection gate; connected pages show the current Arc destination while preserving isolated Recovery and Bridge-source sessions.
+
 ### Recovery
 
 Browser Wallet Recovery is the recommended default and uses EIP-6963 for explicit provider selection. Only public registration metadata is stored locally. The signer seed/private key is never requested. The alternative 12-word phrase exists only in memory while displayed or submitted; the app does not write it to Storage, logs, analytics, URLs, or clipboard. Recovery adds a new Passkey and does not revoke an old one.

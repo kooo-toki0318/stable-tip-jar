@@ -103,6 +103,8 @@ The frontend also supports Circle Modular Wallets on Arc Testnet:
 - CCTP Bridge from Ethereum, Base, and Arbitrum Sepolia to the active Arc address
 - Circle Forwarding Service for destination minting without an Arc-side wallet switch
 
+The interface uses three hash-routed surfaces: `#/tip` for Tip/Claim, `#/wallet` for Passkey and Recovery, and `#/bridge` for CCTP. The active Tip Jar identity remains visible and unchanged while Recovery and Bridge source wallets connect independently.
+
 Recovery adds a new Passkey owner; it does not remove a lost old Passkey. Recovery and Bridge providers are isolated from the wallet currently driving the Tip Jar dashboard. Browser Wallet Recovery has been implemented against the Circle SDK types and still requires the documented MetaMask/Rabby production smoke test.
 
 ## Repository structure

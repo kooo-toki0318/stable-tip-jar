@@ -142,21 +142,30 @@ export function PasskeyControls({
       {!configured && (
         <p className="feature-warning">{t("passkey.notConfigured")}</p>
       )}
+      {session && (
+        <div className="passkey-session-card">
+          <span className="status-light online" aria-hidden="true" />
+          <span>
+            <strong>{t("passkey.active")}</strong>
+            <code>{session.address}</code>
+          </span>
+        </div>
+      )}
       <div className="feature-actions">
         <button
-          type="button"
-          onClick={() => void open("login")}
-          disabled={!configured || busy || working !== null}
-        >
-          {working === "login" ? t("passkey.working") : t("passkey.login")}
-        </button>
-        <button
-          className="secondary-button"
           type="button"
           onClick={() => void open("register")}
           disabled={!configured || busy || working !== null}
         >
           {working === "register" ? t("passkey.working") : t("passkey.create")}
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => void open("login")}
+          disabled={!configured || busy || working !== null}
+        >
+          {working === "login" ? t("passkey.working") : t("passkey.login")}
         </button>
       </div>
       {session && <small>{t("passkey.gasSponsored")}</small>}
@@ -420,6 +429,12 @@ export function RecoveryPanel({
       <div className="recovery-warning" role="note">
         {t("recovery.oldPasskeyWarning")}
       </div>
+
+      {!passkeySession && (
+        <p className="recovery-lock-note">
+          {t("recovery.setupRequiresPasskey")}
+        </p>
+      )}
 
       {passkeySession && (
         <div className="recovery-setup">

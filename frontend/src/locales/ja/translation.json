@@ -54,12 +54,18 @@
     "recipientDescription": "EVMウォレットアドレスを入力します。",
     "sendTitle": "チップを送信",
     "sendDescription": "USDCとオンチェーンメッセージを追加します。",
-    "faucetLink": "テスト用USDCが必要ですか？Circle公式Faucetを開く ↗"
+    "faucetLink": "テスト用USDCが必要ですか？Circle公式Faucetを開く ↗",
+    "passkeyTitle": "Passkey Walletを使いますか？",
+    "passkeyDescription": "専用ページでCircle Smart Walletの作成・復旧ができます。"
   },
   "navigation": {
     "viewsAria": "Tip Jarの表示切り替え",
     "send": "送る",
-    "myJar": "マイJar"
+    "myJar": "マイJar",
+    "primaryAria": "メインナビゲーション",
+    "tip": "Tip Jar",
+    "wallet": "Wallet・Recovery",
+    "bridge": "Bridge"
   },
   "jar": {
     "statisticsAria": "あなたのTip Jarの統計",
@@ -210,6 +216,50 @@
       "copyFailed": "コピーできませんでした。{{error}}"
     }
   },
+  "pages": {
+    "tip": {
+      "documentTitle": "Arc Tip Jar · USDCでチップを送受信"
+    },
+    "wallet": {
+      "documentTitle": "Wallet・Recovery · Arc Tip Jar",
+      "eyebrow": "ARCで使うウォレット",
+      "title": "身軽に使えて、必要なときに戻ってこられるWallet。",
+      "connectedTitle": "Arcで使うSmart Walletの準備ができました。",
+      "description": "Circle Passkey Walletを作成・接続し、独立したRecovery signerを追加できます。Tip Jar・Recovery・Browser Walletのsessionは分離したままです。",
+      "activeLabel": "TIP JARで現在使う主体",
+      "noActiveWallet": "Active Walletは未接続",
+      "browserActive": "Browser Walletを使用中",
+      "passkeyActive": "Passkey Walletを使用中",
+      "activeAddress": "Tip Jarは現在 {{address}} を使用中です。Recovery接続でこの主体は変わりません。",
+      "noActiveDescription": "Browser Walletを接続するか、下からPasskey Walletを作成・接続してください。",
+      "connectBrowser": "Browser Walletを接続",
+      "whyLabel": "PASSKEYを選ぶ理由",
+      "benefitSponsored": "Tip・Claim・Recoveryのガスをスポンサー",
+      "benefitSeparated": "Active sessionとRecovery sessionを分離",
+      "benefitRecoverable": "Browser Walletまたは12語で復旧",
+      "passkeyStep": "Passkey Walletを開く",
+      "passkeyStepHint": "新規作成または再ログイン。credentialはWeb Storageへ保存しません。",
+      "recoveryStep": "戻るための方法を追加",
+      "recoveryStepHint": "推奨は、すでに管理しているBrowser Walletの登録です。"
+    },
+    "bridge": {
+      "documentTitle": "USDCをArcへBridge · Arc Tip Jar",
+      "eyebrow": "CCTP · ARC TESTNET",
+      "title": "USDCをArcへ。送り先は、迷わずひとつ。",
+      "description": "Ethereum・Base・Arbitrum Sepoliaからテスト用USDCをBridgeします。Arcの受取先は、現在のTip Jar Walletに固定されます。",
+      "routeAria": "Sepolia送信元からCircle CCTPを経由してArcへBridgeする経路",
+      "sourceLabel": "送信元",
+      "destinationLabel": "受取先",
+      "destinationReady": "ARC受取先の準備完了",
+      "browserDestination": "Browser Walletで受取 · Bridge元Walletは別session",
+      "passkeyDestination": "Passkey Smart Accountで受取 · Arcガスをスポンサー",
+      "beforeBridge": "BRIDGEの前に",
+      "connectTitle": "まずArcの受取先を決めます。",
+      "connectDescription": "ArcでUSDCを受け取るWalletを接続してください。送信元Browser WalletはBridgeフロー内で別に選択します。",
+      "connectBrowser": "Browser Walletを接続",
+      "usePasskey": "Passkey Walletを作成・接続"
+    }
+  },
   "footer": {
     "testnetDisclaimer": "試験運用中のテストネットdAppです。テストネットUSDCに現実の価値はありません。",
     "mainnetDescription": "メインネット版Arc Tip Jarです。"
@@ -224,7 +274,8 @@
     "created": "Passkey Walletを作成して選択しました。",
     "connected": "Passkey Walletへ接続して選択しました。",
     "gasSponsored": "ガスはスポンサーされます。Arc USDC残高を全額Tipに利用できます。",
-    "error": "Passkey Walletを開けませんでした。{{error}}"
+    "error": "Passkey Walletを開けませんでした。{{error}}",
+    "active": "Active Passkey Wallet"
   },
   "recovery": {
     "sectionLabel": "PASSKEY復旧",
@@ -266,7 +317,8 @@
       "confirmMismatch": "確認用の単語が一致しません。",
       "inputLabel": "12語すべてを入力",
       "recover": "Phraseで復旧"
-    }
+    },
+    "setupRequiresPasskey": "Recovery設定はPasskey Walletを作成・接続すると利用できます。登録済みsignerからの復旧は下から実行できます。"
   },
   "bridge": {
     "sectionLabel": "ARCへBRIDGE",

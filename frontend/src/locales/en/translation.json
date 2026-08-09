@@ -54,12 +54,18 @@
     "recipientDescription": "Paste any EVM wallet address.",
     "sendTitle": "Send a tip",
     "sendDescription": "Add USDC and an onchain message.",
-    "faucetLink": "Need test USDC? Open the official Circle Faucet ↗"
+    "faucetLink": "Need test USDC? Open the official Circle Faucet ↗",
+    "passkeyTitle": "Prefer a Passkey Wallet?",
+    "passkeyDescription": "Create or recover a Circle smart wallet on its own page."
   },
   "navigation": {
     "viewsAria": "Tip jar views",
     "send": "Send",
-    "myJar": "My jar"
+    "myJar": "My jar",
+    "primaryAria": "Primary navigation",
+    "tip": "Tip Jar",
+    "wallet": "Wallet & Recovery",
+    "bridge": "Bridge"
   },
   "jar": {
     "statisticsAria": "Your tip jar statistics",
@@ -210,6 +216,50 @@
       "copyFailed": "Could not copy. {{error}}"
     }
   },
+  "pages": {
+    "tip": {
+      "documentTitle": "Arc Tip Jar · Send and receive USDC tips"
+    },
+    "wallet": {
+      "documentTitle": "Wallet & Recovery · Arc Tip Jar",
+      "eyebrow": "YOUR ARC WALLET",
+      "title": "A wallet that feels lighter—and comes back when you need it.",
+      "connectedTitle": "Your smart wallet is ready for Arc.",
+      "description": "Create or open a Circle Passkey Wallet, then give it an independent recovery signer. Tip Jar, recovery, and browser-wallet sessions stay separate.",
+      "activeLabel": "ACTIVE TIP JAR IDENTITY",
+      "noActiveWallet": "No active wallet",
+      "browserActive": "Browser Wallet is active",
+      "passkeyActive": "Passkey Wallet is active",
+      "activeAddress": "Tip Jar currently uses {{address}}. Recovery connections will not replace it.",
+      "noActiveDescription": "Connect a browser wallet here, or continue below to create or open a Passkey Wallet.",
+      "connectBrowser": "Connect Browser Wallet",
+      "whyLabel": "WHY PASSKEY",
+      "benefitSponsored": "Sponsored Tip, Claim, and Recovery operations",
+      "benefitSeparated": "Independent active and recovery sessions",
+      "benefitRecoverable": "Browser Wallet or 12-word recovery",
+      "passkeyStep": "Open your Passkey Wallet",
+      "passkeyStepHint": "Create a new wallet or sign back in—nothing is persisted in Web Storage.",
+      "recoveryStep": "Add a way back in",
+      "recoveryStepHint": "Recommended: register a Browser Wallet you already control."
+    },
+    "bridge": {
+      "documentTitle": "Bridge USDC to Arc · Arc Tip Jar",
+      "eyebrow": "CCTP · ARC TESTNET",
+      "title": "Move USDC in. Keep the destination simple.",
+      "description": "Bridge testnet USDC from Ethereum, Base, or Arbitrum Sepolia. Your current Tip Jar wallet is always the Arc recipient.",
+      "routeAria": "Bridge route from a Sepolia source through Circle CCTP to Arc",
+      "sourceLabel": "SOURCE",
+      "destinationLabel": "DESTINATION",
+      "destinationReady": "ARC DESTINATION READY",
+      "browserDestination": "Browser Wallet destination · source wallet remains separate",
+      "passkeyDestination": "Passkey Smart Account destination · Arc gas is sponsored",
+      "beforeBridge": "BEFORE YOU BRIDGE",
+      "connectTitle": "Choose the Arc destination first.",
+      "connectDescription": "Connect the wallet that should receive USDC on Arc. The source Browser Wallet is selected separately in the bridge flow.",
+      "connectBrowser": "Connect Browser Wallet",
+      "usePasskey": "Create or open a Passkey Wallet"
+    }
+  },
   "footer": {
     "testnetDisclaimer": "Experimental testnet dApp. Testnet USDC has no real-world value.",
     "mainnetDescription": "Arc Tip Jar on Mainnet."
@@ -224,7 +274,8 @@
     "created": "Passkey Wallet created and selected.",
     "connected": "Passkey Wallet connected and selected.",
     "gasSponsored": "Gas is sponsored. Your full Arc USDC balance is available for tips.",
-    "error": "Passkey Wallet could not be opened. {{error}}"
+    "error": "Passkey Wallet could not be opened. {{error}}",
+    "active": "Active Passkey Wallet"
   },
   "recovery": {
     "sectionLabel": "PASSKEY RECOVERY",
@@ -266,7 +317,8 @@
       "confirmMismatch": "The confirmation words do not match.",
       "inputLabel": "Enter all 12 words",
       "recover": "Recover with phrase"
-    }
+    },
+    "setupRequiresPasskey": "Recovery setup unlocks after you create or open a Passkey Wallet. Recovery with an already registered signer remains available below."
   },
   "bridge": {
     "sectionLabel": "BRIDGE TO ARC",

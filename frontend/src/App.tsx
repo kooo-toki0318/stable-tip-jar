@@ -41,6 +41,7 @@ import {
 } from "./arc";
 import type { PasskeyWalletSession } from "./circleWallet";
 import { isIsolatedWalletRequestActive } from "./eip6963";
+import { appPageFromHash, type AppPage } from "./appPage";
 
 const PasskeyControls = lazy(() =>
   import("./WalletFeatures").then((module) => ({
@@ -273,6 +274,9 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const language = getSupportedLanguage(i18n.resolvedLanguage ?? i18n.language);
   const locale = language === "ja" ? "ja-JP" : "en-US";
+  const [appPage, setAppPage] = useState<AppPage>(() =>
+    appPageFromHash(window.location.hash),
+  );
   const [account, setAccount] = useState<Address | null>(null);
   const [activeWalletKind, setActiveWalletKind] = useState<
     "browser" | "passkey"
@@ -337,6 +341,23 @@ export default function App() {
   const recipientHighlightTimeoutRef = useRef<ReturnType<
     typeof globalThis.setTimeout
   > | null>(null);
+
+  useEffect(() => {
+    const syncPage = () => {
+      setAppPage(appPageFromHash(window.location.hash));
+      window.scrollTo({ top: 0, behavior: "auto" });
+    };
+    if (!window.location.hash) {
+      window.history.replaceState(null, "", "#/tip");
+    }
+    syncPage();
+    window.addEventListener("hashchange", syncPage);
+    return () => window.removeEventListener("hashchange", syncPage);
+  }, []);
+
+  useEffect(() => {
+    document.title = t("pages." + appPage + ".documentTitle");
+  }, [appPage, t]);
 
   const selectedNetwork =
     arcNetworks[selectedNetworkKey] ?? arcNetworks.testnet!;
@@ -1301,15 +1322,40 @@ export default function App() {
 
       <header className="site-header">
         <div className="topbar page-shell">
-          <a className="brand" href="#top" aria-label={t("brand.homeAria")}>
+          <a className="brand" href="#/tip" aria-label={t("brand.homeAria")}>
             <span className="brand-mark">A</span>
             <span>{t("brand.name")}</span>
           </a>
 
+          <nav
+            className="primary-navigation"
+            aria-label={t("navigation.primaryAria")}
+          >
+            {(["tip", "wallet", "bridge"] as const).map((page) => (
+              <a
+                key={page}
+                href={`#/${page}`}
+                className={appPage === page ? "active" : ""}
+                aria-current={appPage === page ? "page" : undefined}
+              >
+                {t(`navigation.${page}`)}
+              </a>
+            ))}
+          </nav>
+
           <div className="header-actions">
-            <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
-              {t("header.contract")}
-            </a>
+            <div className="header-meta-links">
+              <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
+                {t("header.contract")}
+              </a>
+              <a
+                href="https://github.com/kooo-toki0318/arc-tip-jar"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t("header.github")}
+              </a>
+            </div>
 
             <label className="network-select-label">
               <span className="sr-only">{t("header.networkLabel")}</span>
@@ -1343,14 +1389,6 @@ export default function App() {
               </select>
             </label>
 
-            <a
-              href="https://github.com/kooo-toki0318/arc-tip-jar"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t("header.github")}
-            </a>
-
             <button
               className={"wallet-button " + (account ? "connected" : "")}
               type="button"
@@ -1365,11 +1403,9 @@ export default function App() {
             >
               {account ? (
                 <>
+                  <span className="wallet-kind-dot" aria-hidden="true" />
                   <span className="wallet-address">
                     {shortAddress(account)}
-                  </span>
-                  <span className="wallet-separator" aria-hidden="true">
-                    ·
                   </span>
                   <span className="wallet-action">
                     {t("header.disconnect")}
@@ -1400,7 +1436,8 @@ export default function App() {
         )}
 
         <section
-          id="top"
+          id="tip-page"
+          hidden={appPage !== "tip"}
           className={"hero " + (account ? "hero-connected" : "")}
         >
           <div className="eyebrow">
@@ -1432,6 +1469,7 @@ export default function App() {
 
         {!account ? (
           <section
+            hidden={appPage !== "tip"}
             className="onboarding-panel"
             aria-labelledby="onboarding-title"
           >
@@ -1461,18 +1499,16 @@ export default function App() {
               <small>{t("onboarding.walletSupport")}</small>
             </div>
 
-            <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
-              <PasskeyControls
-                session={null}
-                busy={isConnecting}
-                onSession={activatePasskeyWallet}
-              />
-
-              <RecoveryPanel
-                passkeySession={null}
-                onRecoveredSession={activatePasskeyWallet}
-              />
-            </Suspense>
+            <a className="onboarding-wallet-route" href="#/wallet">
+              <span className="route-card-icon" aria-hidden="true">
+                ⌁
+              </span>
+              <span>
+                <strong>{t("onboarding.passkeyTitle")}</strong>
+                <small>{t("onboarding.passkeyDescription")}</small>
+              </span>
+              <span aria-hidden="true">→</span>
+            </a>
 
             <ol className="onboarding-steps">
               <li>
@@ -1510,7 +1546,7 @@ export default function App() {
             )}
           </section>
         ) : (
-          <>
+          <div className="tip-connected-view" hidden={appPage !== "tip"}>
             <div className="mobile-tabs" aria-label={t("navigation.viewsAria")}>
               <button
                 type="button"
@@ -2428,31 +2464,234 @@ export default function App() {
                 )}
               </article>
             </div>
+          </div>
+        )}
 
-            <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
-              <div className="feature-stack">
-                <div className="feature-panel">
-                  <PasskeyControls
-                    session={
+        {appPage === "wallet" && (
+          <section
+            className="product-page wallet-page"
+            aria-labelledby="wallet-page-title"
+          >
+            <div className="product-hero wallet-product-hero">
+              <div className="product-hero-copy">
+                <span className="section-label">
+                  {t("pages.wallet.eyebrow")}
+                </span>
+                <h1 id="wallet-page-title">
+                  {t(
+                    activeWalletKind === "passkey" && account
+                      ? "pages.wallet.connectedTitle"
+                      : "pages.wallet.title",
+                  )}
+                </h1>
+                <p>{t("pages.wallet.description")}</p>
+              </div>
+              <div className="wallet-orbit" aria-hidden="true">
+                <span className="orbit-core">A</span>
+                <span className="orbit-node orbit-passkey">Passkey</span>
+                <span className="orbit-node orbit-recovery">Recovery</span>
+              </div>
+            </div>
+
+            <div className="wallet-context-grid">
+              <article className="wallet-context-card">
+                <span className="context-kicker">
+                  {t("pages.wallet.activeLabel")}
+                </span>
+                <div className="context-status-row">
+                  <span
+                    className={account ? "status-light online" : "status-light"}
+                  />
+                  <strong>
+                    {account
+                      ? t(
+                          activeWalletKind === "passkey"
+                            ? "pages.wallet.passkeyActive"
+                            : "pages.wallet.browserActive",
+                        )
+                      : t("pages.wallet.noActiveWallet")}
+                  </strong>
+                </div>
+                <p>
+                  {account
+                    ? t("pages.wallet.activeAddress", {
+                        address: shortAddress(account),
+                      })
+                    : t("pages.wallet.noActiveDescription")}
+                </p>
+                {!account && (
+                  <button
+                    className="context-connect-button"
+                    type="button"
+                    onClick={() => void connectWallet()}
+                    disabled={isConnecting}
+                  >
+                    {isConnecting
+                      ? t("header.connecting")
+                      : t("pages.wallet.connectBrowser")}
+                  </button>
+                )}
+              </article>
+
+              <article className="wallet-promise-card">
+                <span className="context-kicker">
+                  {t("pages.wallet.whyLabel")}
+                </span>
+                <ul>
+                  <li>
+                    <span>01</span>
+                    {t("pages.wallet.benefitSponsored")}
+                  </li>
+                  <li>
+                    <span>02</span>
+                    {t("pages.wallet.benefitSeparated")}
+                  </li>
+                  <li>
+                    <span>03</span>
+                    {t("pages.wallet.benefitRecoverable")}
+                  </li>
+                </ul>
+              </article>
+            </div>
+
+            <Suspense
+              fallback={
+                <p className="feature-loading">{t("common.loading")}</p>
+              }
+            >
+              <div className="wallet-workflow">
+                <div className="workflow-step passkey-step">
+                  <div className="workflow-marker">
+                    <span>01</span>
+                    <div>
+                      <strong>{t("pages.wallet.passkeyStep")}</strong>
+                      <small>{t("pages.wallet.passkeyStepHint")}</small>
+                    </div>
+                  </div>
+                  <div className="feature-panel passkey-panel">
+                    <PasskeyControls
+                      session={
+                        activeWalletKind === "passkey" ? passkeySession : null
+                      }
+                      busy={isConnecting || isSending || isClaiming}
+                      onSession={activatePasskeyWallet}
+                    />
+                  </div>
+                </div>
+
+                <div className="workflow-step recovery-step">
+                  <div className="workflow-marker">
+                    <span>02</span>
+                    <div>
+                      <strong>{t("pages.wallet.recoveryStep")}</strong>
+                      <small>{t("pages.wallet.recoveryStepHint")}</small>
+                    </div>
+                  </div>
+                  <RecoveryPanel
+                    passkeySession={
                       activeWalletKind === "passkey" ? passkeySession : null
                     }
-                    busy={isSending || isClaiming}
-                    onSession={activatePasskeyWallet}
+                    onRecoveredSession={activatePasskeyWallet}
                   />
                 </div>
-                <BridgePanel
-                  destinationAddress={account}
-                  onComplete={refreshWalletBalance}
-                />
-                <RecoveryPanel
-                  passkeySession={
-                    activeWalletKind === "passkey" ? passkeySession : null
-                  }
-                  onRecoveredSession={activatePasskeyWallet}
-                />
               </div>
             </Suspense>
-          </>
+          </section>
+        )}
+
+        {appPage === "bridge" && (
+          <section
+            className="product-page bridge-page"
+            aria-labelledby="bridge-page-title"
+          >
+            <div className="product-hero bridge-product-hero">
+              <div className="product-hero-copy">
+                <span className="section-label">
+                  {t("pages.bridge.eyebrow")}
+                </span>
+                <h1 id="bridge-page-title">{t("pages.bridge.title")}</h1>
+                <p>{t("pages.bridge.description")}</p>
+              </div>
+              <div
+                className="bridge-route-map"
+                role="img"
+                aria-label={t("pages.bridge.routeAria")}
+              >
+                <div>
+                  <small>{t("pages.bridge.sourceLabel")}</small>
+                  <strong>Sepolia</strong>
+                </div>
+                <span className="route-line" aria-hidden="true">
+                  <i />
+                </span>
+                <div className="route-cctp">
+                  <small>Circle</small>
+                  <strong>CCTP</strong>
+                </div>
+                <span className="route-line" aria-hidden="true">
+                  <i />
+                </span>
+                <div className="route-arc">
+                  <small>{t("pages.bridge.destinationLabel")}</small>
+                  <strong>Arc</strong>
+                </div>
+              </div>
+            </div>
+
+            {account ? (
+              <>
+                <div className="destination-banner">
+                  <div>
+                    <span className="status-light online" aria-hidden="true" />
+                    <span>{t("pages.bridge.destinationReady")}</span>
+                  </div>
+                  <strong>{shortAddress(account)}</strong>
+                  <small>
+                    {t(
+                      activeWalletKind === "passkey"
+                        ? "pages.bridge.passkeyDestination"
+                        : "pages.bridge.browserDestination",
+                    )}
+                  </small>
+                </div>
+                <Suspense
+                  fallback={
+                    <p className="feature-loading">{t("common.loading")}</p>
+                  }
+                >
+                  <BridgePanel
+                    destinationAddress={account}
+                    onComplete={refreshWalletBalance}
+                  />
+                </Suspense>
+              </>
+            ) : (
+              <div className="bridge-access-gate">
+                <div className="gate-symbol" aria-hidden="true">
+                  ↘
+                </div>
+                <div>
+                  <span className="section-label">
+                    {t("pages.bridge.beforeBridge")}
+                  </span>
+                  <h2>{t("pages.bridge.connectTitle")}</h2>
+                  <p>{t("pages.bridge.connectDescription")}</p>
+                </div>
+                <div className="gate-actions">
+                  <button
+                    type="button"
+                    onClick={() => void connectWallet()}
+                    disabled={isConnecting}
+                  >
+                    {isConnecting
+                      ? t("header.connecting")
+                      : t("pages.bridge.connectBrowser")}
+                  </button>
+                  <a href="#/wallet">{t("pages.bridge.usePasskey")} →</a>
+                </div>
+              </div>
+            )}
+          </section>
         )}
 
         <footer>
