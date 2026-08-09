@@ -32,7 +32,8 @@
     "disconnect": "切断",
     "connectWalletAria": "ウォレットを接続",
     "disconnectWalletAria": "ウォレット {{address}} を切断",
-    "dismissWalletStatusAria": "ウォレットの通知を閉じる"
+    "dismissWalletStatusAria": "ウォレットの通知を閉じる",
+    "activePasskey": "Passkey"
   },
   "hero": {
     "connectedTitleLine1": "感謝を届けよう。",
@@ -127,7 +128,8 @@
     "recipientFeedback": {
       "selected": "送り先を {{address}} に設定しました。",
       "hint": "金額とメッセージを確認してから送信してください。"
-    }
+    },
+    "rangeMaximumSponsored": "100% · ガススポンサー"
   },
   "sentHistory": {
     "title": "送信履歴",
@@ -162,7 +164,8 @@
     "copiedTitle": "コピーしました",
     "copySendAria": "送信トランザクションハッシュをコピー",
     "copyClaimAria": "受取トランザクションハッシュをコピー",
-    "copyReceivedAria": "受信トランザクションハッシュをコピー"
+    "copyReceivedAria": "受信トランザクションハッシュをコピー",
+    "userOperation": "User operation: {{hash}}"
   },
   "status": {
     "wallet": {
@@ -171,7 +174,8 @@
       "connectedAndSwitched": "接続し、{{network}}に切り替えました。",
       "disconnected": "このdAppからウォレットを切断しました。",
       "switched": "{{network}}に切り替えました。",
-      "switchFailed": "ネットワークを切り替えられませんでした。{{error}}"
+      "switchFailed": "ネットワークを切り替えられませんでした。{{error}}",
+      "passkeyConnected": "Arc TestnetでCircle Passkey Walletへ接続しました。"
     },
     "refresh": {
       "latestTipsFailed": "最新のチップを更新できませんでした。最後に読み込んだデータを表示しています。{{error}}",
@@ -209,5 +213,105 @@
   "footer": {
     "testnetDisclaimer": "試験運用中のテストネットdAppです。テストネットUSDCに現実の価値はありません。",
     "mainnetDescription": "メインネット版Arc Tip Jarです。"
+  },
+  "passkey": {
+    "title": "Circle Passkey Wallet",
+    "description": "Passkeyで保護されたCircle Smart Accountを使います。Tip・Claim・RecoveryのガスはGas Stationがスポンサーします。",
+    "notConfigured": "公開Circle Client Keyが設定されるまでPasskey Walletは利用できません。",
+    "login": "既存Passkeyを使う",
+    "create": "Passkey Walletを作成",
+    "working": "Passkeyを確認中…",
+    "created": "Passkey Walletを作成して選択しました。",
+    "connected": "Passkey Walletへ接続して選択しました。",
+    "gasSponsored": "ガスはスポンサーされます。Arc USDC残高を全額Tipに利用できます。",
+    "error": "Passkey Walletを開けませんでした。{{error}}"
+  },
+  "recovery": {
+    "sectionLabel": "PASSKEY復旧",
+    "title": "Recovery signerを追加",
+    "beta": "Browser Wallet · Beta",
+    "description": "Circle Passkey Walletとは別のRecovery signerを設定します。",
+    "oldPasskeyWarning": "Recoveryは新しいPasskeyを追加します。紛失した古いPasskeyは無効化・削除されません。",
+    "setupTitle": "Recovery方式を選択",
+    "methodAria": "Recovery方式",
+    "recommended": "推奨 · Recovery Phraseの保管不要",
+    "configured": "Arc上で確認し、Recoveryを設定しました。",
+    "error": "Recoveryを完了できませんでした。{{error}}",
+    "working": "Arcで確認中…",
+    "walletPicker": "Browser Walletを明示的に選択",
+    "connectedSigner": "Recovery signer: {{address}}",
+    "configureBrowser": "Browser Wallet Recoveryを登録",
+    "runTitle": "登録済みsignerから復旧",
+    "registered": "保存済み公開登録情報: {{method}} · {{address}}",
+    "sessionIsolation": "このRecovery接続は、Tip Jarで現在使用中のWalletとは分離されています。",
+    "recoveredReady": "Recoveryに成功しました。新Passkeyは利用できますが、Tip JarのActive Walletは変更していません。",
+    "useRecovered": "復旧したWalletを使う",
+    "activated": "復旧したPasskey WalletをActiveにしました。",
+    "method": {
+      "browser": "Browser Wallet",
+      "phrase": "12-word Recovery Phrase"
+    },
+    "browser": {
+      "title": "Browser WalletをRecoveryに使う",
+      "recover": "Browser Walletで復旧"
+    },
+    "phrase": {
+      "title": "12-word Recovery Phraseを作成",
+      "generate": "12語を生成",
+      "wordsAria": "Recovery Phraseの単語",
+      "storeOffline": "この12語はオフラインで書き留めてください。アプリは保存・ログ・コピー・URL追加をしません。",
+      "confirmLabel": "{{positions}}番目の単語を空白区切りで入力",
+      "confirm": "確認して登録",
+      "cancel": "Phraseを破棄",
+      "confirmMismatch": "確認用の単語が一致しません。",
+      "inputLabel": "12語すべてを入力",
+      "recover": "Phraseで復旧"
+    }
+  },
+  "bridge": {
+    "sectionLabel": "ARCへBRIDGE",
+    "title": "Tip JarへUSDCを移動",
+    "description": "Ethereum・Base・Arbitrum Sepoliaから、Active Tip JarアドレスへCCTPでテストネットUSDCをBridgeします。",
+    "destinationRequired": "Bridge前にTip JarのActive Walletを接続してください。",
+    "walletPicker": "分離されたBridge元Walletを選択",
+    "source": "送信元ネットワーク",
+    "amount": "USDC金額",
+    "speed": "転送速度",
+    "fast": "Fast",
+    "standard": "Standard",
+    "destination": "Arc受取先: {{address}}",
+    "connectSource": "Bridge元Walletを接続",
+    "connecting": "接続中…",
+    "connected": "Bridge元を接続しました: {{address}}",
+    "estimate": "手数料を見積もる",
+    "estimating": "見積もり中…",
+    "estimateReady": "見積もりは60秒間有効です。",
+    "estimateExpired": "見積もりが期限切れ、または入力が変更されました。再見積もりしてください。",
+    "execute": "ArcへBridge",
+    "bridging": "Bridge中…",
+    "retry": "残りの処理を再試行",
+    "retrying": "再試行中…",
+    "success": "USDCがArcへ到着し、Arc残高を更新しました。",
+    "softError": "Bridge処理の続行が必要です。再試行は既存転送を再開し、burnを重複送信しません。",
+    "error": "Bridgeを続行できませんでした。{{error}}",
+    "estimateTitle": "見積もり費用",
+    "fee": "{{type}}手数料: {{amount}} {{token}}",
+    "gasFee": "{{name}}ガス: {{amount}} {{token}}",
+    "receivedEstimate": "Arc着金見込み: {{amount}} USDC",
+    "progressAria": "Bridge進捗",
+    "noAutoSwitch": "Bridge元WalletはActive Walletから分離されています。完了時にActive Walletやnetworkを自動変更しません。",
+    "progressStep": "{{stage}} · {{state}}",
+    "stage": {
+      "approve": "USDCをApprove",
+      "burn": "送信元でBurn",
+      "attestation": "CCTP Attestation",
+      "mint": "ArcでForward・Mint",
+      "processing": "Bridge処理"
+    },
+    "state": {
+      "pending": "処理中",
+      "success": "完了",
+      "error": "確認が必要"
+    }
   }
 }

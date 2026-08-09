@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   createPublicClient,
@@ -31,6 +39,24 @@ import {
   type ArcNetworkConfig,
   type ArcNetworkKey,
 } from "./arc";
+import type { PasskeyWalletSession } from "./circleWallet";
+import { isIsolatedWalletRequestActive } from "./eip6963";
+
+const PasskeyControls = lazy(() =>
+  import("./WalletFeatures").then((module) => ({
+    default: module.PasskeyControls,
+  })),
+);
+const RecoveryPanel = lazy(() =>
+  import("./WalletFeatures").then((module) => ({
+    default: module.RecoveryPanel,
+  })),
+);
+const BridgePanel = lazy(() =>
+  import("./WalletFeatures").then((module) => ({
+    default: module.BridgePanel,
+  })),
+);
 
 type BrowserEthereumProvider = EIP1193Provider;
 
@@ -98,15 +124,37 @@ function CopyIcon({ copied }: { copied: boolean }) {
   if (copied) {
     return (
       <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16">
-        <path d="m5 12.5 4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="m5 12.5 4.2 4.2L19 7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     );
   }
 
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16">
-      <rect x="8" y="8" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <rect
+        x="8"
+        y="8"
+        width="11"
+        height="11"
+        rx="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -179,7 +227,8 @@ async function loadAccountActivity(
 }
 
 function decodeSentTip(log: ActivityLog): Tip | null {
-  if (!log.timestamp || !log.transactionHash || log.topics.length === 0) return null;
+  if (!log.timestamp || !log.transactionHash || log.topics.length === 0)
+    return null;
   try {
     const decoded = decodeEventLog({
       abi: arcTipJarAbi,
@@ -225,6 +274,11 @@ export default function App() {
   const language = getSupportedLanguage(i18n.resolvedLanguage ?? i18n.language);
   const locale = language === "ja" ? "ja-JP" : "en-US";
   const [account, setAccount] = useState<Address | null>(null);
+  const [activeWalletKind, setActiveWalletKind] = useState<
+    "browser" | "passkey"
+  >("browser");
+  const [passkeySession, setPasskeySession] =
+    useState<PasskeyWalletSession | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
   const [selectedNetworkKey, setSelectedNetworkKey] =
     useState<ArcNetworkKey>("testnet");
@@ -239,7 +293,9 @@ export default function App() {
   const [sentTips, setSentTips] = useState<Tip[]>([]);
   const [sentTipCount, setSentTipCount] = useState(0);
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
-  const [receivedTipTxHashes, setReceivedTipTxHashes] = useState<Record<string, Hash>>({});
+  const [receivedTipTxHashes, setReceivedTipTxHashes] = useState<
+    Record<string, Hash>
+  >({});
   const [claimTxHashes, setClaimTxHashes] = useState<Record<string, Hash>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSentHistoryLoading, setIsSentHistoryLoading] = useState(false);
@@ -250,9 +306,13 @@ export default function App() {
   const [walletStatus, setWalletStatus] = useState<UiMessage | null>(null);
   const [jarStatus, setJarStatus] = useState<UiMessage | null>(null);
   const [sendStatus, setSendStatus] = useState<UiMessage | null>(null);
-  const [sentHistoryError, setSentHistoryError] = useState<UiMessage | null>(null);
+  const [sentHistoryError, setSentHistoryError] = useState<UiMessage | null>(
+    null,
+  );
   const [claimStatus, setClaimStatus] = useState<UiMessage | null>(null);
-  const [recipientNotice, setRecipientNotice] = useState<UiMessage | null>(null);
+  const [recipientNotice, setRecipientNotice] = useState<UiMessage | null>(
+    null,
+  );
   const [isRecipientHighlighted, setIsRecipientHighlighted] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [mobileView, setMobileView] = useState<"send" | "jar">("send");
@@ -261,6 +321,8 @@ export default function App() {
   const refreshAllPromiseRef = useRef<Promise<void> | null>(null);
   const [sendTxHash, setSendTxHash] = useState<Hash | null>(null);
   const [claimTxHash, setClaimTxHash] = useState<Hash | null>(null);
+  const [sendUserOpHash, setSendUserOpHash] = useState<Hash | null>(null);
+  const [claimUserOpHash, setClaimUserOpHash] = useState<Hash | null>(null);
   const [clipboardFeedback, setClipboardFeedback] =
     useState<ClipboardFeedback | null>(null);
   const copiedTargetId = clipboardFeedback?.success
@@ -269,10 +331,15 @@ export default function App() {
   const amountInputRef = useRef<HTMLInputElement>(null);
   const networkSwitchButtonRef = useRef<HTMLButtonElement>(null);
   const recipientInputRef = useRef<HTMLInputElement>(null);
-  const clipboardFeedbackTimeoutRef = useRef<number | null>(null);
-  const recipientHighlightTimeoutRef = useRef<number | null>(null);
+  const clipboardFeedbackTimeoutRef = useRef<ReturnType<
+    typeof globalThis.setTimeout
+  > | null>(null);
+  const recipientHighlightTimeoutRef = useRef<ReturnType<
+    typeof globalThis.setTimeout
+  > | null>(null);
 
-  const selectedNetwork = arcNetworks[selectedNetworkKey] ?? arcNetworks.testnet!;
+  const selectedNetwork =
+    arcNetworks[selectedNetworkKey] ?? arcNetworks.testnet!;
   const { chain, contractAddress } = selectedNetwork;
   const activeDataContextRef = useRef("");
   const activeDataContext = `${selectedNetwork.key}:${account ?? "disconnected"}`;
@@ -288,7 +355,11 @@ export default function App() {
   const isCorrectNetwork = chainId === chain.id;
   const gasReserve = parseUnits("0.01", 18);
   const spendableBalance =
-    walletBalance && walletBalance > gasReserve ? walletBalance - gasReserve : 0n;
+    activeWalletKind === "passkey"
+      ? (walletBalance ?? 0n)
+      : walletBalance && walletBalance > gasReserve
+        ? walletBalance - gasReserve
+        : 0n;
   const recipientAddress = useMemo(
     () => (isAddress(recipientInput) ? getAddress(recipientInput) : null),
     [recipientInput],
@@ -334,7 +405,9 @@ export default function App() {
               ? t("send.cta.enterRecipient")
               : !recipientAddress
                 ? t("send.cta.checkRecipient")
-                : t("send.cta.sendAmount", { amount: formatUsdc(parsedTipAmount, locale) });
+                : t("send.cta.sendAmount", {
+                    amount: formatUsdc(parsedTipAmount, locale),
+                  });
   const receivedTipsWithTransactions = useMemo(
     () =>
       receivedTips.map((tip) => ({
@@ -359,37 +432,77 @@ export default function App() {
     [claimTxHashes, claims],
   );
   const remainingAfterTip =
-    walletBalance !== null && parsedTipAmount !== null && walletBalance >= parsedTipAmount
+    walletBalance !== null &&
+    parsedTipAmount !== null &&
+    walletBalance >= parsedTipAmount
       ? walletBalance - parsedTipAmount
       : null;
 
   const refreshData = useCallback(async () => {
     if (!account) return;
     const requestContext = activeDataContextRef.current;
-    const isCurrentRequest = () => activeDataContextRef.current === requestContext;
+    const isCurrentRequest = () =>
+      activeDataContextRef.current === requestContext;
     setIsLoading(true);
     setJarStatus(null);
     let refreshSucceeded = true;
     try {
       const jarAddress = account;
       const contract = { address: contractAddress, abi: arcTipJarAbi } as const;
-      const [balance, claimableCount, totalReceived, totalClaimed, tipCount, claimCount] =
-        await withRpcQueue(() =>
-          publicClient.multicall({
-            allowFailure: false,
-            contracts: [
-              { ...contract, functionName: "claimableBalance", args: [jarAddress] },
-              { ...contract, functionName: "claimableTipCount", args: [jarAddress] },
-              { ...contract, functionName: "receivedByRecipient", args: [jarAddress] },
-              { ...contract, functionName: "claimedByRecipient", args: [jarAddress] },
-              { ...contract, functionName: "recipientTipCount", args: [jarAddress] },
-              { ...contract, functionName: "recipientClaimCount", args: [jarAddress] },
-            ],
-          }),
-        );
+      const [
+        balance,
+        claimableCount,
+        totalReceived,
+        totalClaimed,
+        tipCount,
+        claimCount,
+      ] = await withRpcQueue(() =>
+        publicClient.multicall({
+          allowFailure: false,
+          contracts: [
+            {
+              ...contract,
+              functionName: "claimableBalance",
+              args: [jarAddress],
+            },
+            {
+              ...contract,
+              functionName: "claimableTipCount",
+              args: [jarAddress],
+            },
+            {
+              ...contract,
+              functionName: "receivedByRecipient",
+              args: [jarAddress],
+            },
+            {
+              ...contract,
+              functionName: "claimedByRecipient",
+              args: [jarAddress],
+            },
+            {
+              ...contract,
+              functionName: "recipientTipCount",
+              args: [jarAddress],
+            },
+            {
+              ...contract,
+              functionName: "recipientClaimCount",
+              args: [jarAddress],
+            },
+          ],
+        }),
+      );
 
       if (!isCurrentRequest()) return;
-      setStats({ balance, claimableCount, totalReceived, totalClaimed, tipCount, claimCount });
+      setStats({
+        balance,
+        claimableCount,
+        totalReceived,
+        totalClaimed,
+        tipCount,
+        claimCount,
+      });
       setIsContractReady(true);
 
       try {
@@ -414,21 +527,25 @@ export default function App() {
           );
           if (!isCurrentRequest()) return;
           setReceivedTips(
-            tipResults.map(([sender, tipAmount, timestamp, tipMessage], offset): Tip => ({
-              index: tipIndexes[offset],
-              sender,
-              recipient: jarAddress,
-              amount: tipAmount,
-              timestamp,
-              message: tipMessage,
-              txHash: null,
-            })),
+            tipResults.map(
+              ([sender, tipAmount, timestamp, tipMessage], offset): Tip => ({
+                index: tipIndexes[offset],
+                sender,
+                recipient: jarAddress,
+                amount: tipAmount,
+                timestamp,
+                message: tipMessage,
+                txHash: null,
+              }),
+            ),
           );
         }
       } catch (error) {
         refreshSucceeded = false;
         if (isCurrentRequest()) {
-          setJarStatus(getErrorUiMessage(error, "status.refresh.latestTipsFailed"));
+          setJarStatus(
+            getErrorUiMessage(error, "status.refresh.latestTipsFailed"),
+          );
         }
       }
 
@@ -454,18 +571,22 @@ export default function App() {
           );
           if (!isCurrentRequest()) return;
           setClaims(
-            claimResults.map(([claimAmount, timestamp], offset): ClaimRecord => ({
-              index: claimIndexes[offset],
-              amount: claimAmount,
-              timestamp,
-              txHash: null,
-            })),
+            claimResults.map(
+              ([claimAmount, timestamp], offset): ClaimRecord => ({
+                index: claimIndexes[offset],
+                amount: claimAmount,
+                timestamp,
+                txHash: null,
+              }),
+            ),
           );
         }
       } catch (error) {
         refreshSucceeded = false;
         if (isCurrentRequest()) {
-          setJarStatus(getErrorUiMessage(error, "status.refresh.claimHistoryFailed"));
+          setJarStatus(
+            getErrorUiMessage(error, "status.refresh.claimHistoryFailed"),
+          );
         }
       }
       if (refreshSucceeded && isCurrentRequest()) setLastUpdatedAt(new Date());
@@ -490,67 +611,71 @@ export default function App() {
       const nextBalance = await withRpcQueue(() =>
         publicClient.getBalance({ address: account }),
       );
-      if (activeDataContextRef.current === requestContext) setWalletBalance(nextBalance);
+      if (activeDataContextRef.current === requestContext)
+        setWalletBalance(nextBalance);
     } catch {
-      if (activeDataContextRef.current === requestContext) setWalletBalance(null);
+      if (activeDataContextRef.current === requestContext)
+        setWalletBalance(null);
     }
   }, [account, publicClient]);
-  const refreshActivity = useCallback(async (bypassCache = false) => {
-    if (!account) {
-      setSentTips([]);
-      setSentTipCount(0);
-      setReceivedTipTxHashes({});
-      setClaimTxHashes({});
-      setIsSentHistoryLoading(false);
-      setSentHistoryError(null);
-      return;
-    }
-
-    const requestContext = activeDataContextRef.current;
-    setIsSentHistoryLoading(true);
-    setSentHistoryError(null);
-    try {
-      const activity = await loadAccountActivity(
-        account,
-        selectedNetworkKey,
-        bypassCache,
-      );
-      if (activeDataContextRef.current !== requestContext) return;
-      setSentTipCount(activity.sentTipCount);
-      setSentTips(
-        activity.sentTips.flatMap((log): Tip[] => {
-          const tip = decodeSentTip(log);
-          return tip ? [tip] : [];
-        }),
-      );
-      setReceivedTipTxHashes(
-        Object.fromEntries(
-          activity.receivedTipTransactions.map(({ index, transactionHash }) => [
-            String(index),
-            transactionHash,
-          ]),
-        ),
-      );
-      setClaimTxHashes(
-        Object.fromEntries(
-          activity.claimTransactions.map(({ index, transactionHash }) => [
-            String(index),
-            transactionHash,
-          ]),
-        ),
-      );
-    } catch (error) {
-      if (activeDataContextRef.current === requestContext) {
-        setSentHistoryError(
-          getErrorUiMessage(error, "status.refresh.sentHistoryFailed"),
-        );
-      }
-    } finally {
-      if (activeDataContextRef.current === requestContext) {
+  const refreshActivity = useCallback(
+    async (bypassCache = false) => {
+      if (!account) {
+        setSentTips([]);
+        setSentTipCount(0);
+        setReceivedTipTxHashes({});
+        setClaimTxHashes({});
         setIsSentHistoryLoading(false);
+        setSentHistoryError(null);
+        return;
       }
-    }
-  }, [account, selectedNetworkKey]);
+
+      const requestContext = activeDataContextRef.current;
+      setIsSentHistoryLoading(true);
+      setSentHistoryError(null);
+      try {
+        const activity = await loadAccountActivity(
+          account,
+          selectedNetworkKey,
+          bypassCache,
+        );
+        if (activeDataContextRef.current !== requestContext) return;
+        setSentTipCount(activity.sentTipCount);
+        setSentTips(
+          activity.sentTips.flatMap((log): Tip[] => {
+            const tip = decodeSentTip(log);
+            return tip ? [tip] : [];
+          }),
+        );
+        setReceivedTipTxHashes(
+          Object.fromEntries(
+            activity.receivedTipTransactions.map(
+              ({ index, transactionHash }) => [String(index), transactionHash],
+            ),
+          ),
+        );
+        setClaimTxHashes(
+          Object.fromEntries(
+            activity.claimTransactions.map(({ index, transactionHash }) => [
+              String(index),
+              transactionHash,
+            ]),
+          ),
+        );
+      } catch (error) {
+        if (activeDataContextRef.current === requestContext) {
+          setSentHistoryError(
+            getErrorUiMessage(error, "status.refresh.sentHistoryFailed"),
+          );
+        }
+      } finally {
+        if (activeDataContextRef.current === requestContext) {
+          setIsSentHistoryLoading(false);
+        }
+      }
+    },
+    [account, selectedNetworkKey],
+  );
   async function refreshAllData() {
     if (!account || isLoading || isSentHistoryLoading) return;
     if (refreshAllPromiseRef.current) return refreshAllPromiseRef.current;
@@ -586,10 +711,12 @@ export default function App() {
   }
 
   const syncWalletState = useCallback(async () => {
-    if (!window.ethereum) return;
+    if (activeWalletKind === "passkey" || !window.ethereum) return;
     if (window.localStorage.getItem("arc-tip-jar-disconnected") === "true") {
       setAccount(null);
       setChainId(null);
+      setPasskeySession(null);
+      setActiveWalletKind("browser");
       return;
     }
 
@@ -604,7 +731,7 @@ export default function App() {
     setChainId(nextChainId);
     const detectedNetwork = getArcNetworkByChainId(nextChainId);
     if (detectedNetwork) setSelectedNetworkKey(detectedNetwork.key);
-  }, []);
+  }, [activeWalletKind]);
 
   useEffect(() => {
     void syncWalletState();
@@ -613,18 +740,23 @@ export default function App() {
   useEffect(() => {
     document.documentElement.lang = language;
     document.title = t("brand.name");
-    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    const description = document.querySelector<HTMLMetaElement>(
+      'meta[name="description"]',
+    );
     if (description) description.content = t("hero.disconnectedDescription");
   }, [language, t]);
 
-  useEffect(() => () => {
-    if (clipboardFeedbackTimeoutRef.current !== null) {
-      globalThis.clearTimeout(clipboardFeedbackTimeoutRef.current);
-    }
-    if (recipientHighlightTimeoutRef.current !== null) {
-      globalThis.clearTimeout(recipientHighlightTimeoutRef.current);
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      if (clipboardFeedbackTimeoutRef.current !== null) {
+        globalThis.clearTimeout(clipboardFeedbackTimeoutRef.current);
+      }
+      if (recipientHighlightTimeoutRef.current !== null) {
+        globalThis.clearTimeout(recipientHighlightTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     setStats(emptyStats);
@@ -635,11 +767,13 @@ export default function App() {
     setJarStatus(null);
     setSendStatus(null);
     setSendTxHash(null);
+    setSendUserOpHash(null);
     setRecipientNotice(null);
     setIsRecipientHighlighted(false);
     setIsSending(false);
     setClaimStatus(null);
     setClaimTxHash(null);
+    setClaimUserOpHash(null);
     setIsClaiming(false);
     setLastUpdatedAt(null);
     setIsContractReady(false);
@@ -667,10 +801,12 @@ export default function App() {
     if (account) void refreshActivity();
   }, [account, refreshActivity, selectedNetworkKey]);
   useEffect(() => {
+    if (activeWalletKind !== "browser") return;
     const provider = window.ethereum;
     if (!provider?.on) return;
 
     const handleAccountsChanged = (...args: unknown[]) => {
+      if (isIsolatedWalletRequestActive()) return;
       const accounts = (args[0] ?? []) as Address[];
       if (
         accounts.length > 0 &&
@@ -687,6 +823,7 @@ export default function App() {
     };
 
     const handleChainChanged = (...args: unknown[]) => {
+      if (isIsolatedWalletRequestActive()) return;
       const nextChainId = Number.parseInt(args[0] as string, 16);
       setChainId(nextChainId);
       const detectedNetwork = getArcNetworkByChainId(nextChainId);
@@ -700,7 +837,7 @@ export default function App() {
       provider.removeListener?.("accountsChanged", handleAccountsChanged);
       provider.removeListener?.("chainChanged", handleChainChanged);
     };
-  }, []);
+  }, [activeWalletKind]);
 
   async function connectWallet() {
     if (!window.ethereum) {
@@ -717,6 +854,8 @@ export default function App() {
       const nextAccount = accounts[0] ?? null;
 
       window.localStorage.removeItem("arc-tip-jar-disconnected");
+      setActiveWalletKind("browser");
+      setPasskeySession(null);
       setAccount(nextAccount);
       setRecipientInput(nextAccount ?? "");
       const walletChainId = Number.parseInt(
@@ -745,10 +884,22 @@ export default function App() {
       setIsConnecting(false);
     }
   }
+
+  function activatePasskeyWallet(session: PasskeyWalletSession) {
+    window.localStorage.setItem("arc-tip-jar-disconnected", "true");
+    setActiveWalletKind("passkey");
+    setPasskeySession(session);
+    setAccount(session.address);
+    setChainId(session.chainId);
+    setSelectedNetworkKey("testnet");
+    setRecipientInput(session.address);
+    setWalletStatus({ key: "status.wallet.passkeyConnected" });
+  }
+
   async function disconnectWallet() {
     const provider = window.ethereum;
     try {
-      if (provider) {
+      if (provider && activeWalletKind === "browser") {
         const request = provider.request as unknown as (args: {
           method: string;
           params?: readonly unknown[];
@@ -765,6 +916,8 @@ export default function App() {
       window.localStorage.setItem("arc-tip-jar-disconnected", "true");
       setAccount(null);
       setChainId(null);
+      setPasskeySession(null);
+      setActiveWalletKind("browser");
       setRecipientInput("");
       setRecipientNotice(null);
       setIsRecipientHighlighted(false);
@@ -970,13 +1123,21 @@ export default function App() {
     event.preventDefault();
     setSendStatus(null);
     setSendTxHash(null);
+    setSendUserOpHash(null);
 
-    if (!window.ethereum || !account) {
+    if (
+      !account ||
+      (activeWalletKind === "browser" && !window.ethereum) ||
+      (activeWalletKind === "passkey" && !passkeySession)
+    ) {
       setSendStatus({ key: "status.send.walletRequired" });
       return;
     }
     if (!isCorrectNetwork) {
-      setSendStatus({ key: "status.send.wrongNetwork", values: { network: chain.name } });
+      setSendStatus({
+        key: "status.send.wrongNetwork",
+        values: { network: chain.name },
+      });
       return;
     }
     if (!isContractReady) {
@@ -1008,26 +1169,40 @@ export default function App() {
     setIsSending(true);
     setSendStatus({ key: "status.send.confirmInWallet" });
     try {
-      const walletClient = createWalletClient({
-        account,
-        chain,
-        transport: custom(window.ethereum),
-      });
-
-      const hash = await walletClient.writeContract({
-        address: contractAddress,
-        abi: arcTipJarAbi,
-        functionName: "tip",
-        args: [recipientAddress, message],
-        value: parsedTipAmount,
-      });
-
+      if (activeWalletKind === "passkey" && passkeySession) {
+        const receipt = await passkeySession.sendTip({
+          contractAddress,
+          recipient: recipientAddress,
+          message,
+          value: parsedTipAmount,
+        });
+        if (!isCurrentOperation()) return;
+        setSendUserOpHash(receipt.userOperationHash);
+        setSendTxHash(receipt.transactionHash);
+      } else {
+        if (!window.ethereum) throw new Error("WALLET_PROVIDER_MISSING");
+        const walletClient = createWalletClient({
+          account,
+          chain,
+          transport: custom(window.ethereum),
+        });
+        const hash = await walletClient.writeContract({
+          address: contractAddress,
+          abi: arcTipJarAbi,
+          functionName: "tip",
+          args: [recipientAddress, message],
+          value: parsedTipAmount,
+        });
+        if (!isCurrentOperation()) return;
+        setSendTxHash(hash);
+        setSendStatus({ key: "status.send.submitted" });
+        await publicClient.waitForTransactionReceipt({ hash });
+      }
       if (!isCurrentOperation()) return;
-      setSendTxHash(hash);
-      setSendStatus({ key: "status.send.submitted" });
-      await publicClient.waitForTransactionReceipt({ hash });
-      if (!isCurrentOperation()) return;
-      setSendStatus({ key: "status.send.confirmed", values: { network: chain.name } });
+      setSendStatus({
+        key: "status.send.confirmed",
+        values: { network: chain.name },
+      });
       setAmount("0.01");
       setAmountPercentage(0);
       setMessage("");
@@ -1045,13 +1220,21 @@ export default function App() {
   async function claimTips() {
     setClaimStatus(null);
     setClaimTxHash(null);
+    setClaimUserOpHash(null);
 
-    if (!window.ethereum || !account) {
+    if (
+      !account ||
+      (activeWalletKind === "browser" && !window.ethereum) ||
+      (activeWalletKind === "passkey" && !passkeySession)
+    ) {
       setClaimStatus({ key: "status.claim.walletRequired" });
       return;
     }
     if (!isCorrectNetwork) {
-      setClaimStatus({ key: "status.claim.wrongNetwork", values: { network: chain.name } });
+      setClaimStatus({
+        key: "status.claim.wrongNetwork",
+        values: { network: chain.name },
+      });
       return;
     }
     if (stats.balance === 0n) {
@@ -1064,23 +1247,33 @@ export default function App() {
       activeDataContextRef.current === operationContext;
     setIsClaiming(true);
     try {
-      const walletClient = createWalletClient({
-        account,
-        chain,
-        transport: custom(window.ethereum),
-      });
-      const hash = await walletClient.writeContract({
-        address: contractAddress,
-        abi: arcTipJarAbi,
-        functionName: "claim",
-      });
-
+      if (activeWalletKind === "passkey" && passkeySession) {
+        const receipt = await passkeySession.claim(contractAddress);
+        if (!isCurrentOperation()) return;
+        setClaimUserOpHash(receipt.userOperationHash);
+        setClaimTxHash(receipt.transactionHash);
+      } else {
+        if (!window.ethereum) throw new Error("WALLET_PROVIDER_MISSING");
+        const walletClient = createWalletClient({
+          account,
+          chain,
+          transport: custom(window.ethereum),
+        });
+        const hash = await walletClient.writeContract({
+          address: contractAddress,
+          abi: arcTipJarAbi,
+          functionName: "claim",
+        });
+        if (!isCurrentOperation()) return;
+        setClaimTxHash(hash);
+        setClaimStatus({ key: "status.claim.submitted" });
+        await publicClient.waitForTransactionReceipt({ hash });
+      }
       if (!isCurrentOperation()) return;
-      setClaimTxHash(hash);
-      setClaimStatus({ key: "status.claim.submitted" });
-      await publicClient.waitForTransactionReceipt({ hash });
-      if (!isCurrentOperation()) return;
-      setClaimStatus({ key: "status.claim.confirmed", values: { network: chain.name } });
+      setClaimStatus({
+        key: "status.claim.confirmed",
+        values: { network: chain.name },
+      });
       await Promise.all([
         refreshData(),
         refreshWalletBalance(),
@@ -1095,7 +1288,12 @@ export default function App() {
 
   return (
     <>
-      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <span
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {clipboardFeedback
           ? t(clipboardFeedback.message.key, clipboardFeedback.message.values)
           : ""}
@@ -1136,7 +1334,9 @@ export default function App() {
               <select
                 aria-label={t("language.selectAria")}
                 value={language}
-                onChange={(event) => void i18n.changeLanguage(event.target.value)}
+                onChange={(event) =>
+                  void i18n.changeLanguage(event.target.value)
+                }
               >
                 <option value="ja">JA</option>
                 <option value="en">EN</option>
@@ -1165,9 +1365,15 @@ export default function App() {
             >
               {account ? (
                 <>
-                  <span className="wallet-address">{shortAddress(account)}</span>
-                  <span className="wallet-separator" aria-hidden="true">·</span>
-                  <span className="wallet-action">{t("header.disconnect")}</span>
+                  <span className="wallet-address">
+                    {shortAddress(account)}
+                  </span>
+                  <span className="wallet-separator" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="wallet-action">
+                    {t("header.disconnect")}
+                  </span>
                 </>
               ) : isConnecting ? (
                 t("header.connecting")
@@ -1193,7 +1399,10 @@ export default function App() {
           </div>
         )}
 
-        <section id="top" className={"hero " + (account ? "hero-connected" : "")}>
+        <section
+          id="top"
+          className={"hero " + (account ? "hero-connected" : "")}
+        >
           <div className="eyebrow">
             {t("brand.builtOn", { network: chain.name.toUpperCase() })}
           </div>
@@ -1222,10 +1431,15 @@ export default function App() {
         </section>
 
         {!account ? (
-          <section className="onboarding-panel" aria-labelledby="onboarding-title">
+          <section
+            className="onboarding-panel"
+            aria-labelledby="onboarding-title"
+          >
             <div className="onboarding-heading">
               <div>
-                <span className="section-label">{t("onboarding.sectionLabel")}</span>
+                <span className="section-label">
+                  {t("onboarding.sectionLabel")}
+                </span>
                 <h2 id="onboarding-title">{t("onboarding.title")}</h2>
               </div>
               <span className="network-pill neutral">
@@ -1246,6 +1460,19 @@ export default function App() {
               </button>
               <small>{t("onboarding.walletSupport")}</small>
             </div>
+
+            <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
+              <PasskeyControls
+                session={null}
+                busy={isConnecting}
+                onSession={activatePasskeyWallet}
+              />
+
+              <RecoveryPanel
+                passkeySession={null}
+                onRecoveredSession={activatePasskeyWallet}
+              />
+            </Suspense>
 
             <ol className="onboarding-steps">
               <li>
@@ -1384,6 +1611,14 @@ export default function App() {
                     </p>
                   )}
 
+                  {claimUserOpHash && (
+                    <small className="user-operation-hash">
+                      {t("transaction.userOperation", {
+                        hash: shortHash(claimUserOpHash),
+                      })}
+                    </small>
+                  )}
+
                   {claimTxHash && (
                     <div className="operation-transaction compact">
                       <span>{shortHash(claimTxHash)}</span>
@@ -1392,8 +1627,7 @@ export default function App() {
                         type="button"
                         aria-label={t("transaction.copyClaimAria")}
                         title={
-                          copiedTargetId ===
-                          "claim-current:" + claimTxHash
+                          copiedTargetId === "claim-current:" + claimTxHash
                             ? t("transaction.copiedTitle")
                             : t("transaction.copyTitle")
                         }
@@ -1407,8 +1641,7 @@ export default function App() {
                       >
                         <CopyIcon
                           copied={
-                            copiedTargetId ===
-                            "claim-current:" + claimTxHash
+                            copiedTargetId === "claim-current:" + claimTxHash
                           }
                         />
                       </button>
@@ -1700,7 +1933,13 @@ export default function App() {
                       />
                       <div className="range-labels">
                         <span>{t("send.rangeMinimum")}</span>
-                        <span>{t("send.rangeMaximum")}</span>
+                        <span>
+                          {t(
+                            activeWalletKind === "passkey"
+                              ? "send.rangeMaximumSponsored"
+                              : "send.rangeMaximum",
+                          )}
+                        </span>
                       </div>
                     </div>
 
@@ -1744,10 +1983,10 @@ export default function App() {
                       ref={recipientInputRef}
                       className={
                         "address-input " +
-                        (recipientInput && !recipientAddress ? "invalid " : "") +
-                        (isRecipientHighlighted
-                          ? "recipient-highlighted"
-                          : "")
+                        (recipientInput && !recipientAddress
+                          ? "invalid "
+                          : "") +
+                        (isRecipientHighlighted ? "recipient-highlighted" : "")
                       }
                       id="recipient"
                       value={recipientInput}
@@ -1791,10 +2030,7 @@ export default function App() {
                             <span>{t("send.readyToSend")}</span>
                             <strong>
                               {t("common.usdcAmount", {
-                                amount: formatUsdc(
-                                  parsedTipAmount,
-                                  locale,
-                                ),
+                                amount: formatUsdc(parsedTipAmount, locale),
                               })}
                             </strong>
                           </div>
@@ -1832,6 +2068,14 @@ export default function App() {
                       </p>
                     )}
 
+                    {sendUserOpHash && (
+                      <small className="user-operation-hash">
+                        {t("transaction.userOperation", {
+                          hash: shortHash(sendUserOpHash),
+                        })}
+                      </small>
+                    )}
+
                     {sendTxHash && (
                       <div className="operation-transaction">
                         <span>{shortHash(sendTxHash)}</span>
@@ -1840,8 +2084,7 @@ export default function App() {
                           type="button"
                           aria-label={t("transaction.copySendAria")}
                           title={
-                            copiedTargetId ===
-                            "send-current:" + sendTxHash
+                            copiedTargetId === "send-current:" + sendTxHash
                               ? t("transaction.copiedTitle")
                               : t("transaction.copyTitle")
                           }
@@ -1855,8 +2098,7 @@ export default function App() {
                         >
                           <CopyIcon
                             copied={
-                              copiedTargetId ===
-                              "send-current:" + sendTxHash
+                              copiedTargetId === "send-current:" + sendTxHash
                             }
                           />
                         </button>
@@ -2050,117 +2292,118 @@ export default function App() {
                   <div className="latest-tips-content">
                     <ol id="latest-tips-list" className="tip-list">
                       {visibleReceivedTips.map((tip) => (
-                      <li key={tip.index.toString()}>
-                        <div className="tip-main">
-                          <strong>
-                            {t("common.usdcAmount", {
-                              amount: formatUsdc(tip.amount, locale),
-                            })}
-                          </strong>
+                        <li key={tip.index.toString()}>
+                          <div className="tip-main">
+                            <strong>
+                              {t("common.usdcAmount", {
+                                amount: formatUsdc(tip.amount, locale),
+                              })}
+                            </strong>
 
-                          <div className="tip-sender-row">
-                            <span>
-                              {t("latestTips.from", {
-                                address: shortAddress(tip.sender),
-                              })}
-                            </span>
-                            <button
-                              className="copy-button sender-copy-button"
-                              type="button"
-                              aria-label={t("latestTips.copySenderAria", {
-                                address: tip.sender,
-                              })}
-                              title={
-                                copiedTargetId ===
-                                "sender-address:" + tip.index.toString()
-                                  ? t("latestTips.senderCopiedTitle")
-                                  : t("latestTips.copySenderTitle")
-                              }
-                              onClick={() =>
-                                void copyToClipboard(
-                                  tip.sender,
-                                  "sender-address:" + tip.index.toString(),
-                                  "latestTips.senderCopiedTitle",
-                                )
-                              }
-                            >
-                              <CopyIcon
-                                copied={
+                            <div className="tip-sender-row">
+                              <span>
+                                {t("latestTips.from", {
+                                  address: shortAddress(tip.sender),
+                                })}
+                              </span>
+                              <button
+                                className="copy-button sender-copy-button"
+                                type="button"
+                                aria-label={t("latestTips.copySenderAria", {
+                                  address: tip.sender,
+                                })}
+                                title={
                                   copiedTargetId ===
                                   "sender-address:" + tip.index.toString()
+                                    ? t("latestTips.senderCopiedTitle")
+                                    : t("latestTips.copySenderTitle")
                                 }
-                              />
-                            </button>
+                                onClick={() =>
+                                  void copyToClipboard(
+                                    tip.sender,
+                                    "sender-address:" + tip.index.toString(),
+                                    "latestTips.senderCopiedTitle",
+                                  )
+                                }
+                              >
+                                <CopyIcon
+                                  copied={
+                                    copiedTargetId ===
+                                    "sender-address:" + tip.index.toString()
+                                  }
+                                />
+                              </button>
+                            </div>
                           </div>
-                        </div>
 
-                        <p>{tip.message || t("latestTips.directTransfer")}</p>
+                          <p>{tip.message || t("latestTips.directTransfer")}</p>
 
-                        <div className="tip-card-actions">
-                          <time
-                            dateTime={new Date(
-                              Number(tip.timestamp) * 1000,
-                            ).toISOString()}
-                          >
-                            {formatEpochSeconds(tip.timestamp, locale)}
-                          </time>
-
-                          {tip.sender.toLowerCase() !== account.toLowerCase() && (
-                            <button
-                              className="tip-back-button"
-                              type="button"
-                              aria-label={t("latestTips.tipThisPersonAria", {
-                                address: tip.sender,
-                              })}
-                              onClick={() => prepareTipBack(tip.sender)}
+                          <div className="tip-card-actions">
+                            <time
+                              dateTime={new Date(
+                                Number(tip.timestamp) * 1000,
+                              ).toISOString()}
                             >
-                              {t("latestTips.tipThisPerson")}
-                            </button>
-                          )}
-                        </div>
+                              {formatEpochSeconds(tip.timestamp, locale)}
+                            </time>
 
-                        {tip.txHash && (
-                          <div className="history-transaction">
-                            <span>{shortHash(tip.txHash)}</span>
-                            <button
-                              className="copy-button"
-                              type="button"
-                              aria-label={t("transaction.copyReceivedAria")}
-                              title={
-                                copiedTargetId ===
-                                "received-history:" + tip.txHash
-                                  ? t("transaction.copiedTitle")
-                                  : t("transaction.copyTitle")
-                              }
-                              onClick={() =>
-                                void copyToClipboard(
-                                  tip.txHash!,
-                                  "received-history:" + tip.txHash,
-                                  "common.copied",
-                                )
-                              }
-                            >
-                              <CopyIcon
-                                copied={
+                            {tip.sender.toLowerCase() !==
+                              account.toLowerCase() && (
+                              <button
+                                className="tip-back-button"
+                                type="button"
+                                aria-label={t("latestTips.tipThisPersonAria", {
+                                  address: tip.sender,
+                                })}
+                                onClick={() => prepareTipBack(tip.sender)}
+                              >
+                                {t("latestTips.tipThisPerson")}
+                              </button>
+                            )}
+                          </div>
+
+                          {tip.txHash && (
+                            <div className="history-transaction">
+                              <span>{shortHash(tip.txHash)}</span>
+                              <button
+                                className="copy-button"
+                                type="button"
+                                aria-label={t("transaction.copyReceivedAria")}
+                                title={
                                   copiedTargetId ===
                                   "received-history:" + tip.txHash
+                                    ? t("transaction.copiedTitle")
+                                    : t("transaction.copyTitle")
                                 }
-                              />
-                            </button>
-                            <a
-                              href={
-                                (chain.blockExplorers?.default.url ?? "") +
-                                "/tx/" +
-                                tip.txHash
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {t("common.arcScan")}
-                            </a>
-                          </div>
-                        )}
-                      </li>
+                                onClick={() =>
+                                  void copyToClipboard(
+                                    tip.txHash!,
+                                    "received-history:" + tip.txHash,
+                                    "common.copied",
+                                  )
+                                }
+                              >
+                                <CopyIcon
+                                  copied={
+                                    copiedTargetId ===
+                                    "received-history:" + tip.txHash
+                                  }
+                                />
+                              </button>
+                              <a
+                                href={
+                                  (chain.blockExplorers?.default.url ?? "") +
+                                  "/tx/" +
+                                  tip.txHash
+                                }
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {t("common.arcScan")}
+                              </a>
+                            </div>
+                          )}
+                        </li>
                       ))}
                     </ol>
 
@@ -2170,7 +2413,9 @@ export default function App() {
                         type="button"
                         aria-controls="latest-tips-list"
                         aria-expanded={showAllLatestTips}
-                        onClick={() => setShowAllLatestTips((current) => !current)}
+                        onClick={() =>
+                          setShowAllLatestTips((current) => !current)
+                        }
                       >
                         {showAllLatestTips
                           ? t("latestTips.showLess")
@@ -2183,6 +2428,30 @@ export default function App() {
                 )}
               </article>
             </div>
+
+            <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
+              <div className="feature-stack">
+                <div className="feature-panel">
+                  <PasskeyControls
+                    session={
+                      activeWalletKind === "passkey" ? passkeySession : null
+                    }
+                    busy={isSending || isClaiming}
+                    onSession={activatePasskeyWallet}
+                  />
+                </div>
+                <BridgePanel
+                  destinationAddress={account}
+                  onComplete={refreshWalletBalance}
+                />
+                <RecoveryPanel
+                  passkeySession={
+                    activeWalletKind === "passkey" ? passkeySession : null
+                  }
+                  onRecoveredSession={activatePasskeyWallet}
+                />
+              </div>
+            </Suspense>
           </>
         )}
 

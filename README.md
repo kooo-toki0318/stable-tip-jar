@@ -93,14 +93,26 @@ It includes:
   reduce direct RPC request bursts
 - Responsive layouts for desktop and mobile
 
+## Arc-native wallet and bridge features
+
+The frontend also supports Circle Modular Wallets on Arc Testnet:
+
+- Browser Wallet and Passkey Smart Account as separate active wallet modes
+- Gas Station-sponsored Passkey Tip, Claim, and Recovery user operations
+- Browser Wallet Recovery (Beta) or an in-memory 12-word recovery phrase
+- CCTP Bridge from Ethereum, Base, and Arbitrum Sepolia to the active Arc address
+- Circle Forwarding Service for destination minting without an Arc-side wallet switch
+
+Recovery adds a new Passkey owner; it does not remove a lost old Passkey. Recovery and Bridge providers are isolated from the wallet currently driving the Tip Jar dashboard. Browser Wallet Recovery has been implemented against the Circle SDK types and still requires the documented MetaMask/Rabby production smoke test.
+
 ## Repository structure
 
-| Path | Purpose |
-| --- | --- |
-| `src/ArcTipJar.sol` | Recipient-based Tip Jar smart contract |
-| `test/ArcTipJar.t.sol` | Contract behavior and security tests |
-| `script/DeployArcTipJar.s.sol` | Arc deployment script |
-| `frontend/` | React frontend and Cloudflare Pages Function |
+| Path                           | Purpose                                      |
+| ------------------------------ | -------------------------------------------- |
+| `src/ArcTipJar.sol`            | Recipient-based Tip Jar smart contract       |
+| `test/ArcTipJar.t.sol`         | Contract behavior and security tests         |
+| `script/DeployArcTipJar.s.sol` | Arc deployment script                        |
+| `frontend/`                    | React frontend and Cloudflare Pages Function |
 
 ## Test status
 

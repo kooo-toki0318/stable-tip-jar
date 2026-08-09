@@ -32,7 +32,8 @@
     "disconnect": "Disconnect",
     "connectWalletAria": "Connect wallet",
     "disconnectWalletAria": "Disconnect wallet {{address}}",
-    "dismissWalletStatusAria": "Dismiss wallet status"
+    "dismissWalletStatusAria": "Dismiss wallet status",
+    "activePasskey": "Passkey"
   },
   "hero": {
     "connectedTitleLine1": "Send thanks.",
@@ -127,7 +128,8 @@
     "recipientFeedback": {
       "selected": "Recipient set to {{address}}.",
       "hint": "Review the amount and message, then send when you’re ready."
-    }
+    },
+    "rangeMaximumSponsored": "100% · gas sponsored"
   },
   "sentHistory": {
     "title": "Sent tip history",
@@ -162,7 +164,8 @@
     "copiedTitle": "Copied",
     "copySendAria": "Copy send transaction hash",
     "copyClaimAria": "Copy claim transaction hash",
-    "copyReceivedAria": "Copy received transaction hash"
+    "copyReceivedAria": "Copy received transaction hash",
+    "userOperation": "User operation: {{hash}}"
   },
   "status": {
     "wallet": {
@@ -171,7 +174,8 @@
       "connectedAndSwitched": "Connected and switched to {{network}}.",
       "disconnected": "Wallet disconnected from this dApp.",
       "switched": "Switched to {{network}}.",
-      "switchFailed": "Could not switch networks. {{error}}"
+      "switchFailed": "Could not switch networks. {{error}}",
+      "passkeyConnected": "Circle Passkey Wallet connected on Arc Testnet."
     },
     "refresh": {
       "latestTipsFailed": "Latest tips could not be refreshed. Showing the last loaded data. {{error}}",
@@ -209,5 +213,105 @@
   "footer": {
     "testnetDisclaimer": "Experimental testnet dApp. Testnet USDC has no real-world value.",
     "mainnetDescription": "Arc Tip Jar on Mainnet."
+  },
+  "passkey": {
+    "title": "Circle Passkey Wallet",
+    "description": "Use a Circle smart account protected by a passkey. Gas Station sponsors Tip, Claim, and Recovery operations.",
+    "notConfigured": "Passkey Wallet is unavailable until the public Circle Client Key is configured.",
+    "login": "Use an existing Passkey",
+    "create": "Create a Passkey Wallet",
+    "working": "Waiting for Passkey…",
+    "created": "Passkey Wallet created and selected.",
+    "connected": "Passkey Wallet connected and selected.",
+    "gasSponsored": "Gas is sponsored. Your full Arc USDC balance is available for tips.",
+    "error": "Passkey Wallet could not be opened. {{error}}"
+  },
+  "recovery": {
+    "sectionLabel": "PASSKEY RECOVERY",
+    "title": "Add a recovery signer",
+    "beta": "Browser Wallet · Beta",
+    "description": "Configure a separate recovery signer for your Circle Passkey Wallet.",
+    "oldPasskeyWarning": "Recovery adds a new Passkey. It does not disable or remove a lost old Passkey.",
+    "setupTitle": "Choose a recovery method",
+    "methodAria": "Recovery method",
+    "recommended": "Recommended · no recovery phrase to store",
+    "configured": "Recovery configured and verified on Arc.",
+    "error": "Recovery could not be completed. {{error}}",
+    "working": "Confirming on Arc…",
+    "walletPicker": "Choose a Browser Wallet explicitly",
+    "connectedSigner": "Recovery signer: {{address}}",
+    "configureBrowser": "Register Browser Wallet recovery",
+    "runTitle": "Recover with a registered signer",
+    "registered": "Saved public registration: {{method}} · {{address}}",
+    "sessionIsolation": "This recovery connection is separate from your active Tip Jar wallet.",
+    "recoveredReady": "Recovery succeeded. The new Passkey is ready, but your active Tip Jar wallet has not changed.",
+    "useRecovered": "Use recovered Wallet",
+    "activated": "The recovered Passkey Wallet is now active.",
+    "method": {
+      "browser": "Browser Wallet",
+      "phrase": "12-word Recovery Phrase"
+    },
+    "browser": {
+      "title": "Use Browser Wallet for Recovery",
+      "recover": "Recover with Browser Wallet"
+    },
+    "phrase": {
+      "title": "Create a 12-word Recovery Phrase",
+      "generate": "Generate 12-word phrase",
+      "wordsAria": "Recovery phrase words",
+      "storeOffline": "Write these words down offline. They are not saved, logged, copied, or added to a URL by this app.",
+      "confirmLabel": "Enter words {{positions}}, separated by spaces",
+      "confirm": "Confirm and register",
+      "cancel": "Discard phrase",
+      "confirmMismatch": "The confirmation words do not match.",
+      "inputLabel": "Enter all 12 words",
+      "recover": "Recover with phrase"
+    }
+  },
+  "bridge": {
+    "sectionLabel": "BRIDGE TO ARC",
+    "title": "Bring USDC to your Tip Jar",
+    "description": "Bridge testnet USDC from Ethereum, Base, or Arbitrum Sepolia to the active Tip Jar address through CCTP.",
+    "destinationRequired": "Connect an active Tip Jar wallet before bridging.",
+    "walletPicker": "Choose a separate source wallet",
+    "source": "Source network",
+    "amount": "USDC amount",
+    "speed": "Transfer speed",
+    "fast": "Fast",
+    "standard": "Standard",
+    "destination": "Arc recipient: {{address}}",
+    "connectSource": "Connect source wallet",
+    "connecting": "Connecting…",
+    "connected": "Bridge source connected: {{address}}",
+    "estimate": "Estimate fees",
+    "estimating": "Estimating…",
+    "estimateReady": "Estimate ready for 60 seconds.",
+    "estimateExpired": "The estimate expired or the inputs changed. Estimate again.",
+    "execute": "Bridge to Arc",
+    "bridging": "Bridging…",
+    "retry": "Retry remaining step",
+    "retrying": "Retrying…",
+    "success": "USDC arrived on Arc. Your Arc balance was refreshed.",
+    "softError": "A bridge step needs attention. Retry resumes the existing transfer without another burn.",
+    "error": "Bridge could not continue. {{error}}",
+    "estimateTitle": "Estimated costs",
+    "fee": "{{type}} fee: {{amount}} {{token}}",
+    "gasFee": "{{name}} gas: {{amount}} {{token}}",
+    "receivedEstimate": "Estimated Arc receipt: {{amount}} USDC",
+    "progressAria": "Bridge progress",
+    "noAutoSwitch": "The source wallet is isolated from the active wallet. Completion never switches your active wallet or network automatically.",
+    "progressStep": "{{stage}} · {{state}}",
+    "stage": {
+      "approve": "Approve USDC",
+      "burn": "Burn on source",
+      "attestation": "CCTP attestation",
+      "mint": "Forward and mint on Arc",
+      "processing": "Bridge processing"
+    },
+    "state": {
+      "pending": "In progress",
+      "success": "Complete",
+      "error": "Needs attention"
+    }
   }
 }

@@ -5,7 +5,7 @@ A small React/Vite frontend for the Arc Tip Jar contract.
 ## Local development
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -19,6 +19,8 @@ cp .env.example .env.local
 
 ```dotenv
 VITE_ARC_TIP_JAR_ADDRESS=0xYOUR_CONTRACT_ADDRESS
+VITE_CIRCLE_CLIENT_KEY=YOUR_PUBLIC_CIRCLE_CLIENT_KEY
+VITE_CIRCLE_CLIENT_URL=https://modular-sdk.circle.com/v1/rpc/w3s/buidl
 ```
 
 This value is public and will be included in the browser bundle.
@@ -48,3 +50,28 @@ credential in a `VITE_` variable.
 Cloudflare creates a preview deployment for non-production branches and pull
 requests, and automatically deploys `main` after each push. The `public/_headers`
 file is copied into the build output and adds browser security headers.
+
+## Circle setup
+
+Create a production Modular Wallets Client Key in Circle Console and register the exact production Passkey domain, `arc-tip-jar.pages.dev`. The `VITE_CIRCLE_CLIENT_KEY` is public browser configuration; never use an API secret, entity secret, seed, or private key there.
+
+The app lazy-loads `@circle-fin/modular-wallets-core`, `@circle-fin/app-kit`, and `@circle-fin/adapter-viem-v2`. Viem is pinned to `2.45.3` to match Modular Wallets SDK `1.0.15`. Passkey operations use Gas Station with `paymaster: true` and never fall back to user-paid gas automatically.
+
+### Recovery
+
+Browser Wallet Recovery is the recommended default and uses EIP-6963 for explicit provider selection. Only public registration metadata is stored locally. The signer seed/private key is never requested. The alternative 12-word phrase exists only in memory while displayed or submitted; the app does not write it to Storage, logs, analytics, URLs, or clipboard. Recovery adds a new Passkey and does not revoke an old one.
+
+Browser Wallet Recovery is marked Beta until MetaMask and Rabby complete the production smoke test.
+
+### Bridge
+
+The Bridge panel supports Ethereum Sepolia, Base Sepolia, and Arbitrum Sepolia as sources and fixes the destination to the active Arc Testnet address. It uses CCTP, `useForwarder: true`, an explicit 60-second estimate, and resumable `retryBridge()` handling. App Kit analytics and error reporting are disabled.
+
+## Checks
+
+```bash
+npm run test:functions
+npm run test:unit
+npm run typecheck
+npm run build
+```
