@@ -275,7 +275,8 @@
     "connected": "Passkey Wallet connected and selected.",
     "gasSponsored": "Gas is sponsored. Your full Arc USDC balance is available for tips.",
     "error": "Passkey Wallet could not be opened. {{error}}",
-    "active": "Active Passkey Wallet"
+    "active": "Active Passkey Wallet",
+    "createdButInitFailed": "Your Passkey was created, but the Smart Account could not be opened. Do not create another one—retry with “Use an existing Passkey.”"
   },
   "recovery": {
     "sectionLabel": "PASSKEY RECOVERY",

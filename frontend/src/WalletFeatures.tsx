@@ -53,6 +53,7 @@ function cleanError(error: unknown): string {
   }
   const safeCodes = new Set([
     "CIRCLE_CLIENT_KEY_MISSING",
+    "PASSKEY_CREATED_WALLET_INIT_FAILED",
     "USER_OPERATION_REVERTED",
     "RECOVERY_SIGNATURE_MISMATCH",
     "RECOVERY_MAPPING_MISMATCH",
@@ -127,7 +128,12 @@ export function PasskeyControls({
         t(mode === "register" ? "passkey.created" : "passkey.connected"),
       );
     } catch (error) {
-      setStatus(t("passkey.error", { error: cleanError(error) }));
+      const code = cleanError(error);
+      setStatus(
+        code === "PASSKEY_CREATED_WALLET_INIT_FAILED"
+          ? t("passkey.createdButInitFailed")
+          : t("passkey.error", { error: code }),
+      );
     } finally {
       setWorking(null);
     }

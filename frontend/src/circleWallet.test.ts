@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   createRecoveryMnemonic,
+  getArcModularClientUrl,
   recoveryProofMessage,
   selectRecoveryWalletAddress,
 } from "./circleWallet";
+
+describe("Circle transport configuration", () => {
+  it("appends the required Arc Testnet path only to the modular client URL", () => {
+    expect(
+      getArcModularClientUrl("https://modular-sdk.circle.com/v1/rpc/w3s/buidl"),
+    ).toBe("https://modular-sdk.circle.com/v1/rpc/w3s/buidl/arcTestnet");
+    expect(getArcModularClientUrl("https://example.com/base/")).toBe(
+      "https://example.com/base/arcTestnet",
+    );
+  });
+});
 
 describe("Circle recovery helpers", () => {
   it("binds the proof to the smart account, recovery EOA, Arc chain, and purpose", () => {

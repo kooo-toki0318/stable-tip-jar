@@ -1,5 +1,5 @@
 import {
-  createClient,
+  createPublicClient,
   createWalletClient,
   custom,
   encodeFunctionData,
@@ -19,6 +19,11 @@ import { arcTipJarAbi } from "./abi";
 import { arcTestnet } from "./arc";
 
 const DEFAULT_CLIENT_URL = "https://modular-sdk.circle.com/v1/rpc/w3s/buidl";
+const ARC_TESTNET_CLIENT_PATH = "arcTestnet";
+
+export function getArcModularClientUrl(clientUrl: string): string {
+  return clientUrl.replace(/\/+$/, "") + "/" + ARC_TESTNET_CLIENT_PATH;
+}
 
 export type CircleReceipt = {
   userOperationHash: Hash;
@@ -62,10 +67,13 @@ function getCircleConfig() {
 async function loadCircleRuntime() {
   const circle = await import("@circle-fin/modular-wallets-core");
   const { clientKey, clientUrl } = getCircleConfig();
-  const transport = circle.toModularTransport(clientUrl, clientKey);
+  const transport = circle.toModularTransport(
+    getArcModularClientUrl(clientUrl),
+    clientKey,
+  );
   const passkeyTransport = circle.toPasskeyTransport(clientUrl, clientKey);
   const modularClient = circle.toCircleModularWalletClient({
-    client: createClient({ transport }),
+    client: createPublicClient({ chain: arcTestnet, transport }),
   });
   return { circle, transport, passkeyTransport, modularClient };
 }
@@ -166,7 +174,14 @@ export async function createPasskeyWallet(
     username:
       mode === "register" ? `arc-tip-jar-${crypto.randomUUID()}` : undefined,
   });
-  return buildPasskeySession(runtime, owner);
+  try {
+    return await buildPasskeySession(runtime, owner);
+  } catch (error) {
+    if (mode === "register") {
+      throw new Error("PASSKEY_CREATED_WALLET_INIT_FAILED", { cause: error });
+    }
+    throw error;
+  }
 }
 
 export function recoveryProofMessage(args: {
@@ -319,7 +334,7 @@ export async function recoverPasskeyWallet(
     throw new Error("RECOVERY_SMART_ACCOUNT_MISMATCH");
   }
 
-  const publicClient = createClient({
+  const publicClient = createPublicClient({
     chain: arcTestnet,
     transport: custom({
       request: ({ method, params }) =>

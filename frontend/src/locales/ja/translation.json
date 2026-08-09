@@ -275,7 +275,8 @@
     "connected": "Passkey Walletへ接続して選択しました。",
     "gasSponsored": "ガスはスポンサーされます。Arc USDC残高を全額Tipに利用できます。",
     "error": "Passkey Walletを開けませんでした。{{error}}",
-    "active": "Active Passkey Wallet"
+    "active": "Active Passkey Wallet",
+    "createdButInitFailed": "Passkeyは作成されましたが、Smart Accountを開けませんでした。新しく作り直さず、「既存Passkeyを使う」から再試行してください。"
   },
   "recovery": {
     "sectionLabel": "PASSKEY復旧",
