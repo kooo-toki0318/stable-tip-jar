@@ -6,8 +6,8 @@
     "japanese": "日本語"
   },
   "brand": {
-    "name": "Arc Tip Jar",
-    "homeAria": "Arc Tip Jar ホーム",
+    "name": "USDC Tip Jar",
+    "homeAria": "USDC Tip Jar ホーム",
     "builtOn": "{{network}} 上に構築"
   },
   "common": {
@@ -228,10 +228,10 @@
   },
   "pages": {
     "tip": {
-      "documentTitle": "Arc Tip Jar · USDCでチップを送受信"
+      "documentTitle": "USDC Tip Jar · USDCでチップを送受信"
     },
     "bridge": {
-      "documentTitle": "USDCをArcへBridge · Arc Tip Jar",
+      "documentTitle": "USDCをArcへBridge · USDC Tip Jar",
       "eyebrow": "CCTP · ARC TESTNET",
       "title": "USDCをArcへ。ひとつのWalletで。",
       "description": "接続中のBrowser WalletからEthereum・Base・Arbitrum SepoliaのUSDCを送り、同じアドレスでArcに受け取ります。",
@@ -249,7 +249,7 @@
   },
   "footer": {
     "testnetDisclaimer": "試験運用中のテストネットdAppです。テストネットUSDCに現実の価値はありません。",
-    "mainnetDescription": "メインネット版Arc Tip Jarです。"
+    "mainnetDescription": "メインネット版USDC Tip Jarです。"
   },
   "passkey": {
     "title": "Circle Passkey Wallet",

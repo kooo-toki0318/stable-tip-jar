@@ -1,6 +1,6 @@
-# Arc Tip Jar frontend
+# USDC Tip Jar frontend
 
-A small React/Vite frontend for the Arc Tip Jar contract.
+A small React/Vite frontend for the USDC Tip Jar contract.
 
 ## Local development
 
