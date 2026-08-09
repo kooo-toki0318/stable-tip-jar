@@ -277,7 +277,7 @@ export default function App() {
   const [browserProvider, setBrowserProvider] =
     useState<BrowserEthereumProvider | null>(null);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const [walletModalView, setWalletModalView] = useState<"choose" | "recover">(
+  const [walletModalView, setWalletModalView] = useState<"choose" | "passkey" | "recover">(
     "choose",
   );
   const [chainId, setChainId] = useState<number | null>(null);
@@ -858,7 +858,9 @@ export default function App() {
     };
   }, [activeWalletKind, browserProvider]);
 
-  function openWalletModal(view: "choose" | "recover" = "choose") {
+  function openWalletModal(
+    view: "choose" | "passkey" | "recover" = "choose",
+  ) {
     setWalletModalView(view);
     setWalletModalOpen(true);
   }
@@ -1506,7 +1508,7 @@ export default function App() {
               <button
                 className="onboarding-passkey-action"
                 type="button"
-                onClick={() => openWalletModal()}
+                onClick={() => openWalletModal("passkey")}
               >
                 {t("passkeyPromo.action")}
               </button>
@@ -1569,7 +1571,7 @@ export default function App() {
                   <h3>{t("passkeyPromo.connectedTitle")}</h3>
                   <p>{t("passkeyPromo.connectedDescription")}</p>
                 </div>
-                <button type="button" onClick={() => openWalletModal()}>
+                <button type="button" onClick={() => openWalletModal("passkey")}>
                   {t("passkeyPromo.action")}
                 </button>
               </aside>

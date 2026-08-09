@@ -359,11 +359,11 @@
     "sponsored": "Sponsored gas for Tip, Claim, and Recovery",
     "noExtension": "Reconnect without a wallet extension",
     "recoverable": "Recover with a Browser Wallet or 12-word recovery phrase",
-    "action": "Create or connect Passkey Wallet"
+    "action": "Create or Restore Passkey Wallet"
   },
   "walletModal": {
     "closeAria": "Close wallet dialog",
-    "back": "Back to connection methods",
+    "back": "Back",
     "error": "The request could not be completed. {{error}}",
     "choose": {
       "eyebrow": "CONNECT WALLET",
@@ -421,6 +421,12 @@
       "description": "The original Smart Account was recovered. Your current Tip Jar wallet has not changed yet.",
       "useWallet": "Use recovered Wallet",
       "closeWithoutSwitch": "Close without switching"
+    },
+    "passkeyEntry": {
+      "eyebrow": "PASSKEY WALLET",
+      "title": "Create or restore",
+      "description": "Create a new Passkey Wallet or restore the original wallet with a registered recovery method.",
+      "connectLink": "Want to connect an existing wallet? Open Connect Wallet"
     }
   }
 }

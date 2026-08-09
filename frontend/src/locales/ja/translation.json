@@ -359,11 +359,11 @@
     "sponsored": "Tip・Claim・Recoveryのガスをスポンサー",
     "noExtension": "ウォレット拡張機能なしで再接続",
     "recoverable": "Browser Walletまたは12語のリカバリーフレーズで復旧",
-    "action": "Passkey Walletを作成・接続"
+    "action": "Passkey Walletを作成・復旧"
   },
   "walletModal": {
     "closeAria": "ウォレット画面を閉じる",
-    "back": "接続方法へ戻る",
+    "back": "戻る",
     "error": "処理を完了できませんでした。{{error}}",
     "choose": {
       "eyebrow": "CONNECT WALLET",
@@ -421,6 +421,12 @@
       "description": "元のSmart Accountを復旧しました。Tip Jarで現在使っているWalletはまだ変更していません。",
       "useWallet": "復旧したWalletを使う",
       "closeWithoutSwitch": "切り替えずに閉じる"
+    },
+    "passkeyEntry": {
+      "eyebrow": "PASSKEY WALLET",
+      "title": "作成または復旧",
+      "description": "新しいPasskey Walletを作成するか、登録済みの復旧方法から元のWalletを復旧します。",
+      "connectLink": "既存のWalletへ接続しますか？ Connect Walletを開く"
     }
   }
 }

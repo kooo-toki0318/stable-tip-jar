@@ -28,7 +28,7 @@ import {
   type InjectedWallet,
 } from "./eip6963";
 
-export type WalletModalView = "choose" | "recover";
+export type WalletModalView = "choose" | "passkey" | "recover";
 
 type PublicRecoveryMetadata = {
   method: "browser" | "phrase";
@@ -38,7 +38,12 @@ type PublicRecoveryMetadata = {
   registrationTransactionHash: Hash;
 };
 
-type ModalStage = "choose" | "backup" | "recover" | "recovered";
+type ModalStage =
+  | "choose"
+  | "passkey"
+  | "backup"
+  | "recover"
+  | "recovered";
 type WorkingAction =
   | "browser-connect"
   | "passkey-login"
@@ -51,6 +56,12 @@ type WorkingAction =
 
 const RECOVERY_METADATA_KEY = "arc-tip-jar-recovery-metadata";
 const CONFIRMATION_INDEXES = [2, 6, 10];
+
+function stageFromView(view: WalletModalView): ModalStage {
+  if (view === "recover") return "recover";
+  if (view === "passkey") return "passkey";
+  return "choose";
+}
 
 function shortAddress(address: Address): string {
   return address.slice(0, 6) + "…" + address.slice(-4);
@@ -166,9 +177,12 @@ export default function WalletModal({
   onActivatePasskey: (session: PasskeyWalletSession) => void;
 }) {
   const { t } = useTranslation();
-  const [stage, setStage] = useState<ModalStage>(
-    initialView === "recover" ? "recover" : "choose",
+  const [stage, setStage] = useState<ModalStage>(() =>
+    stageFromView(initialView),
   );
+  const [recoveryReturnStage, setRecoveryReturnStage] = useState<
+    "choose" | "passkey"
+  >("choose");
   const [working, setWorking] = useState<WorkingAction>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [createdSession, setCreatedSession] = useState<PasskeyWalletSession | null>(null);
@@ -206,7 +220,10 @@ export default function WalletModal({
 
   useEffect(() => {
     if (!open) return;
-    setStage(initialView === "recover" ? "recover" : "choose");
+    setStage(stageFromView(initialView));
+    setRecoveryReturnStage(
+      initialView === "passkey" ? "passkey" : "choose",
+    );
     setStatus(null);
     setWorking(null);
     setCreatedSession(null);
@@ -475,7 +492,9 @@ export default function WalletModal({
                 ? t("walletModal.backup.eyebrow")
                 : stage === "recover" || stage === "recovered"
                   ? t("walletModal.recover.eyebrow")
-                  : t("walletModal.choose.eyebrow")}
+                  : stage === "passkey"
+                    ? t("walletModal.passkeyEntry.eyebrow")
+                    : t("walletModal.choose.eyebrow")}
             </span>
             <h2 id="wallet-modal-title">
               {stage === "backup"
@@ -484,7 +503,9 @@ export default function WalletModal({
                   ? t("walletModal.recover.title")
                   : stage === "recovered"
                     ? t("walletModal.recovered.title")
-                    : t("walletModal.choose.title")}
+                    : stage === "passkey"
+                      ? t("walletModal.passkeyEntry.title")
+                      : t("walletModal.choose.title")}
             </h2>
           </div>
           <button
@@ -498,6 +519,64 @@ export default function WalletModal({
             ×
           </button>
         </div>
+
+        {stage === "passkey" && (
+          <div className="wallet-modal-body">
+            <p className="wallet-modal-lead">
+              {t("walletModal.passkeyEntry.description")}
+            </p>
+            <div className="wallet-method-list">
+              <button
+                type="button"
+                className="wallet-method-card primary-method"
+                onClick={() => void openPasskey("register")}
+                disabled={!isCircleConfigured() || working !== null}
+              >
+                <MethodIcon>＋</MethodIcon>
+                <span>
+                  <strong>
+                    {working === "passkey-create"
+                      ? t("passkey.working")
+                      : t("walletModal.choose.create")}
+                  </strong>
+                  <small>{t("walletModal.choose.createHint")}</small>
+                </span>
+                <span aria-hidden="true">→</span>
+              </button>
+              <button
+                type="button"
+                className="wallet-method-card"
+                onClick={() => {
+                  setStatus(null);
+                  setRecoveryReturnStage("passkey");
+                  setStage("recover");
+                }}
+                disabled={!isCircleConfigured() || working !== null}
+              >
+                <MethodIcon>↺</MethodIcon>
+                <span>
+                  <strong>{t("walletModal.choose.recover")}</strong>
+                  <small>{t("walletModal.choose.recoverHint")}</small>
+                </span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+            <button
+              className="wallet-modal-text-link"
+              type="button"
+              onClick={() => {
+                setStatus(null);
+                setStage("choose");
+              }}
+              disabled={working !== null}
+            >
+              {t("walletModal.passkeyEntry.connectLink")}
+            </button>
+            {!isCircleConfigured() && (
+              <p className="feature-warning">{t("passkey.notConfigured")}</p>
+            )}
+          </div>
+        )}
 
         {stage === "choose" && (
           <div className="wallet-modal-body">
@@ -554,6 +633,7 @@ export default function WalletModal({
                 className="wallet-method-card"
                 onClick={() => {
                   setStatus(null);
+                  setRecoveryReturnStage("choose");
                   setStage("recover");
                 }}
                 disabled={!isCircleConfigured() || working !== null}
@@ -688,7 +768,7 @@ export default function WalletModal({
               onClick={() => {
                 setStatus(null);
                 setRecoveryPhraseInput("");
-                setStage("choose");
+                setStage(recoveryReturnStage);
               }}
               disabled={working !== null}
             >

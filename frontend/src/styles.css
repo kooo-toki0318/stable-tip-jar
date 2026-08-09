@@ -3328,6 +3328,23 @@ textarea:focus-visible {
   background: transparent !important;
 }
 
+.wallet-modal .wallet-modal-text-link {
+  justify-self: center;
+  min-height: 44px;
+  padding: 10px 4px;
+  color: #9db4a9;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.wallet-modal .wallet-modal-text-link:hover {
+  color: #8cf6bd;
+}
+
 .registered-recovery {
   display: grid;
   grid-template-columns: 1fr auto auto;
