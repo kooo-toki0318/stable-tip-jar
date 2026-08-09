@@ -102,6 +102,8 @@
     "sectionLabel": "SEND A TIP",
     "title": "Support the jar",
     "connectedBalance": "Connected wallet balance",
+    "refreshBalance": "Refresh balance",
+    "refreshBalanceAria": "Refresh connected wallet balance",
     "balanceAvailable": "Available on {{network}} for tips and gas",
     "jarUnavailableMessage": "Jar data is unavailable, so sending is paused.",
     "tryAgainShortly": "Try again shortly",
@@ -326,6 +328,8 @@
     "sameAddressHint": "The same EOA address is used on both sides",
     "sourceBalance": "{{network}} USDC balance",
     "sourceBalanceError": "Balance could not be loaded.",
+    "rpcConfigMissing": "Bridge RPCs are not configured. Add all four public RPC environment variables.",
+    "rpcConfigMissingShort": "Bridge RPC is not configured.",
     "refreshBalance": "Refresh source balance",
     "refreshBalanceAria": "Refresh source USDC balance",
     "insufficientBalance": "The amount is higher than this wallet's USDC balance.",
@@ -399,6 +403,9 @@
       "CIRCLE_CLIENT_KEY_MISSING": "Circle Wallet is not configured.",
       "USER_OPERATION_REVERTED": "The Arc recovery operation reverted.",
       "RECOVERY_REGISTRATION_FAILED": "The recovery signer could not be registered on Arc. Confirm that Gas Station sponsors recovery operations, then retry.",
+      "RECOVERY_REGISTRATION_SPONSORSHIP_FAILED": "Gas Station did not sponsor recovery registration. Tip sponsorship can work while recovery owner changes are excluded; enable the recovery operation in the Circle Gas Station policy, then retry.",
+      "RECOVERY_REGISTRATION_SUBMISSION_FAILED": "Circle could not submit the recovery signer registration. Retry after confirming the recovery policy.",
+      "RECOVERY_REGISTRATION_RECEIPT_FAILED": "The recovery registration was submitted, but its Arc receipt could not be confirmed.",
       "RECOVERY_SIGNATURE_FAILED": "The connected Browser Wallet could not sign the recovery proof.",
       "RECOVERY_SIGNATURE_MISMATCH": "The signature does not match the connected recovery address.",
       "RECOVERY_MAPPING_MISMATCH": "Circle did not confirm the signer mapping for this Smart Account.",
@@ -430,6 +437,13 @@
       "registeredSigner": "Registered recovery signer",
       "disconnect": "Disconnect",
       "isolation": "This signer is used only for recovery and does not change the active Tip Jar wallet."
+    },
+    "browser": {
+      "eyebrow": "BROWSER WALLET",
+      "title": "Choose a Browser Wallet",
+      "description": "Select the wallet extension to connect. The previous cached wallet is never selected automatically here.",
+      "injected": "Injected wallet",
+      "noneFound": "No Browser Wallet was found. Open or install MetaMask, Rabby, or another EIP-6963 wallet."
     },
     "choose": {
       "eyebrow": "CONNECT WALLET",

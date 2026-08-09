@@ -102,6 +102,8 @@
     "sectionLabel": "チップを送る",
     "title": "Tip Jarを応援",
     "connectedBalance": "接続中ウォレットの残高",
+    "refreshBalance": "残高を更新",
+    "refreshBalanceAria": "接続中Walletの残高を更新",
     "balanceAvailable": "{{network}}でチップとガス代に利用できます",
     "jarUnavailableMessage": "Jarデータを取得できないため、送信を一時停止しています。",
     "tryAgainShortly": "少し待って再試行",
@@ -326,6 +328,8 @@
     "sameAddressHint": "同じEOAアドレスを両側で使用します",
     "sourceBalance": "{{network}}のUSDC残高",
     "sourceBalanceError": "残高を取得できませんでした。",
+    "rpcConfigMissing": "Bridge RPCが未設定です。4チェーンすべての公開RPC環境変数を設定してください。",
+    "rpcConfigMissingShort": "Bridge RPCが設定されていません。",
     "refreshBalance": "送信元残高を更新",
     "refreshBalanceAria": "送信元のUSDC残高を更新",
     "insufficientBalance": "入力額がこのWalletのUSDC残高を超えています。",
@@ -399,6 +403,9 @@
       "CIRCLE_CLIENT_KEY_MISSING": "Circle Walletが設定されていません。",
       "USER_OPERATION_REVERTED": "Arc上のRecovery処理がrevertしました。",
       "RECOVERY_REGISTRATION_FAILED": "Recovery signerをArcへ登録できませんでした。Gas StationがRecovery処理をスポンサーする設定を確認して再試行してください。",
+      "RECOVERY_REGISTRATION_SPONSORSHIP_FAILED": "Gas StationがRecovery登録をスポンサーしませんでした。Tipをスポンサーできてもowner追加がpolicy対象外の場合があります。Circle Gas StationでRecovery操作を有効にして再試行してください。",
+      "RECOVERY_REGISTRATION_SUBMISSION_FAILED": "CircleへRecovery signer登録を送信できませんでした。Recovery policyを確認して再試行してください。",
+      "RECOVERY_REGISTRATION_RECEIPT_FAILED": "Recovery登録は送信されましたが、Arc上のreceiptを確認できませんでした。",
       "RECOVERY_SIGNATURE_FAILED": "接続中のBrowser WalletでRecovery確認署名を作成できませんでした。",
       "RECOVERY_SIGNATURE_MISMATCH": "署名と接続中のRecovery addressが一致しません。",
       "RECOVERY_MAPPING_MISMATCH": "CircleでこのSmart Accountへのsigner mappingを確認できませんでした。",
@@ -430,6 +437,13 @@
       "registeredSigner": "登録済みRecovery signer",
       "disconnect": "接続解除",
       "isolation": "このsignerはRecoveryだけに使用され、Tip Jarで使用中のWalletは変更しません。"
+    },
+    "browser": {
+      "eyebrow": "BROWSER WALLET",
+      "title": "Browser Walletを選択",
+      "description": "接続するWallet拡張機能を選んでください。ここでは前回のWalletをキャッシュから自動選択しません。",
+      "injected": "注入型Wallet",
+      "noneFound": "Browser Walletが見つかりません。MetaMask、Rabby、またはEIP-6963対応Walletを開くかインストールしてください。"
     },
     "choose": {
       "eyebrow": "CONNECT WALLET",

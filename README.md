@@ -108,7 +108,7 @@ The interface uses two hash-routed surfaces: `#/tip` for Tip/Claim and `#/bridge
 
 Recovery adds a new Passkey owner; it does not remove a lost old Passkey. Recovery provider requests remain isolated from the wallet currently driving the Tip Jar dashboard. Browser Wallet Recovery opens the default injected wallet directly and still requires the documented MetaMask/Rabby production smoke test. The current Bridge flow is intentionally single-wallet: the connected Browser Wallet EOA is both the Sepolia source and the Arc recipient. Passkey Wallet sessions are Arc-only and must switch to a Browser Wallet before bridging.
 
-The Bridge shows the connected EOA's USDC balance on the selected source chain. A Passkey Smart Account can technically be a Forwarding Service recipient, but the current Arc-only Passkey session cannot sign as a Sepolia source and cross-wallet bridge destinations are not exposed. When a Passkey Wallet is active, its wallet menu provides an isolated Browser Wallet session for native Arc USDC deposits and withdrawals.
+The Bridge shows the connected EOA's USDC balance on the selected source chain and uses explicit environment-configured RPCs for every source plus Arc; it never falls back to App Kit shared RPCs. A Passkey Smart Account can technically be a Forwarding Service recipient, but the current Arc-only Passkey session cannot sign as a Sepolia source and cross-wallet bridge destinations are not exposed. When a Passkey Wallet is active, its wallet menu provides an isolated Browser Wallet session for native Arc USDC deposits and withdrawals.
 
 ## Repository structure
 

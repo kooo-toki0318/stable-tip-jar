@@ -32,6 +32,7 @@ import {
 
 export type WalletModalView =
   | "choose"
+  | "browser"
   | "passkey"
   | "backup"
   | "recover";
@@ -52,6 +53,7 @@ type RecoveryWalletSession = {
 
 type ModalStage =
   | "choose"
+  | "browser"
   | "passkey"
   | "backup"
   | "recover"
@@ -73,6 +75,7 @@ const CONFIRMATION_INDEXES = [2, 6, 10];
 function stageFromView(view: WalletModalView): ModalStage {
   if (view === "backup") return "backup";
   if (view === "recover") return "recover";
+  if (view === "browser") return "browser";
   if (view === "passkey") return "passkey";
   return "choose";
 }
@@ -109,6 +112,9 @@ function cleanError(error: unknown): string {
     "PASSKEY_CREATED_WALLET_INIT_FAILED",
     "USER_OPERATION_REVERTED",
     "RECOVERY_REGISTRATION_FAILED",
+    "RECOVERY_REGISTRATION_SPONSORSHIP_FAILED",
+    "RECOVERY_REGISTRATION_SUBMISSION_FAILED",
+    "RECOVERY_REGISTRATION_RECEIPT_FAILED",
     "RECOVERY_SIGNATURE_FAILED",
     "RECOVERY_SIGNATURE_MISMATCH",
     "RECOVERY_MAPPING_MISMATCH",
@@ -246,7 +252,7 @@ export default function WalletModal({
   initialView: WalletModalView;
   activePasskeySession: PasskeyWalletSession | null;
   onClose: () => void;
-  onConnectBrowser: () => Promise<boolean>;
+  onConnectBrowser: (wallet: InjectedWallet) => Promise<boolean>;
   onActivatePasskey: (session: PasskeyWalletSession) => void;
 }) {
   const { t } = useTranslation();
@@ -262,6 +268,7 @@ export default function WalletModal({
   const [metadata, setMetadata] = useState<PublicRecoveryMetadata[]>(() =>
     readRecoveryMetadata(),
   );
+  const [injectedWallets, setInjectedWallets] = useState<InjectedWallet[]>([]);
   const [recoveryWallet, setRecoveryWallet] =
     useState<RecoveryWalletSession | null>(null);
   const [browserBackupComplete, setBrowserBackupComplete] = useState(false);
@@ -335,6 +342,14 @@ export default function WalletModal({
       document.body.style.overflow = previousOverflow;
     };
   }, [open, initialView]);
+
+  useEffect(() => {
+    if (!open) return;
+    setInjectedWallets([]);
+    return listenForInjectedWallets((wallets) => {
+      setInjectedWallets(wallets);
+    });
+  }, [open]);
 
   useEffect(() => {
     if (!open || !recoveryWallet?.wallet.provider.on) return;
@@ -431,12 +446,13 @@ export default function WalletModal({
     setStatus(t("walletModal.recover.progress." + progressStage));
   }
 
-  async function connectBrowser() {
+  async function connectBrowser(wallet: InjectedWallet) {
     setWorking("browser-connect");
     setStatus(null);
     try {
-      const connected = await onConnectBrowser();
+      const connected = await onConnectBrowser(wallet);
       if (connected) resetAndClose();
+      else setStatus(t("walletModal.errors.REQUEST_FAILED"));
     } finally {
       setWorking(null);
     }
@@ -711,6 +727,8 @@ export default function WalletModal({
                   ? t("walletModal.recover.eyebrow")
                   : stage === "passkey"
                     ? t("walletModal.passkeyEntry.eyebrow")
+                    : stage === "browser"
+                      ? t("walletModal.browser.eyebrow")
                     : t("walletModal.choose.eyebrow")}
             </span>
             <h2 id="wallet-modal-title">
@@ -722,6 +740,8 @@ export default function WalletModal({
                     ? t("walletModal.recovered.title")
                     : stage === "passkey"
                       ? t("walletModal.passkeyEntry.title")
+                      : stage === "browser"
+                        ? t("walletModal.browser.title")
                       : t("walletModal.choose.title")}
             </h2>
           </div>
@@ -736,6 +756,56 @@ export default function WalletModal({
             ×
           </button>
         </div>
+
+        {stage === "browser" && (
+          <div className="wallet-modal-body">
+            {initialView !== "browser" && (
+              <button
+                className="wallet-modal-back"
+                type="button"
+                onClick={() => setStage("choose")}
+                disabled={working !== null}
+              >
+                ← {t("walletModal.back")}
+              </button>
+            )}
+            <p className="wallet-modal-lead">
+              {t("walletModal.browser.description")}
+            </p>
+            {injectedWallets.length > 0 ? (
+              <div className="wallet-picker">
+                {injectedWallets.map((wallet) => (
+                  <button
+                    key={wallet.id}
+                    type="button"
+                    className="wallet-choice"
+                    onClick={() => void connectBrowser(wallet)}
+                    disabled={working !== null}
+                  >
+                    {wallet.icon ? (
+                      <img src={wallet.icon} width="32" height="32" alt="" />
+                    ) : (
+                      <MethodIcon>◈</MethodIcon>
+                    )}
+                    <span>
+                      <strong>{wallet.name}</strong>
+                      <small>{wallet.rdns ?? t("walletModal.browser.injected")}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="feature-warning">
+                {t("walletModal.browser.noneFound")}
+              </p>
+            )}
+            {working === "browser-connect" && (
+              <p className="wallet-modal-lead" role="status">
+                {t("header.connecting")}
+              </p>
+            )}
+          </div>
+        )}
 
         {stage === "passkey" && (
           <div className="wallet-modal-body">
@@ -815,7 +885,10 @@ export default function WalletModal({
               <button
                 type="button"
                 className="wallet-method-card"
-                onClick={() => void connectBrowser()}
+                onClick={() => {
+                  setStatus(null);
+                  setStage("browser");
+                }}
                 disabled={working !== null}
               >
                 <MethodIcon>◈</MethodIcon>

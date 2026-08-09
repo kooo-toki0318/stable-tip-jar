@@ -14,8 +14,19 @@ import {
   type EIP1193Provider,
   type Hash,
 } from "viem";
-import { ArbitrumSepolia, BaseSepolia, EthereumSepolia } from "@circle-fin/app-kit/chains";
-import { withIsolatedWalletRequest } from "./eip6963";
+import {
+  ArbitrumSepolia,
+  ArcTestnet,
+  BaseSepolia,
+  EthereumSepolia,
+} from "@circle-fin/app-kit/chains";
+import {
+  connectInjectedWallet,
+  listenForInjectedWallets,
+  revokeInjectedWallet,
+  withIsolatedWalletRequest,
+  type InjectedWallet,
+} from "./eip6963";
 import { formatUsdc } from "./formatters";
 import { arcTestnet } from "./arc";
 import type { PasskeyWalletSession } from "./circleWallet";
@@ -30,7 +41,7 @@ function cleanError(error: unknown): string {
     return "WALLET_REQUEST_REJECTED";
   }
   const firstLine = error.message.split("\n")[0].trim();
-  return ["BRIDGE_INPUT_REQUIRED", "BRIDGE_ACCOUNT_CHANGED"].includes(
+  return ["BRIDGE_INPUT_REQUIRED", "BRIDGE_ACCOUNT_CHANGED", "BRIDGE_RPC_CONFIG_MISSING"].includes(
     firstLine,
   )
     ? firstLine
@@ -40,15 +51,33 @@ function cleanError(error: unknown): string {
 type BridgeSource = {
   key: "ethereum" | "base" | "arbitrum";
   circleChain: "Ethereum_Sepolia" | "Base_Sepolia" | "Arbitrum_Sepolia";
-  rpcUrl: string;
+  chainId: number;
   usdcAddress: Address;
 };
 
 const BRIDGE_SOURCES: BridgeSource[] = [
-  { key: "ethereum", circleChain: "Ethereum_Sepolia", rpcUrl: EthereumSepolia.rpcEndpoints[0], usdcAddress: getAddress(EthereumSepolia.usdcAddress) },
-  { key: "base", circleChain: "Base_Sepolia", rpcUrl: BaseSepolia.rpcEndpoints[0], usdcAddress: getAddress(BaseSepolia.usdcAddress) },
-  { key: "arbitrum", circleChain: "Arbitrum_Sepolia", rpcUrl: ArbitrumSepolia.rpcEndpoints[0], usdcAddress: getAddress(ArbitrumSepolia.usdcAddress) },
+  { key: "ethereum", circleChain: "Ethereum_Sepolia", chainId: EthereumSepolia.chainId, usdcAddress: getAddress(EthereumSepolia.usdcAddress) },
+  { key: "base", circleChain: "Base_Sepolia", chainId: BaseSepolia.chainId, usdcAddress: getAddress(BaseSepolia.usdcAddress) },
+  { key: "arbitrum", circleChain: "Arbitrum_Sepolia", chainId: ArbitrumSepolia.chainId, usdcAddress: getAddress(ArbitrumSepolia.usdcAddress) },
 ];
+
+const BRIDGE_RPC_URLS: Record<number, string | undefined> = {
+  [EthereumSepolia.chainId]: import.meta.env.VITE_BRIDGE_ETHEREUM_SEPOLIA_RPC_URL?.trim(),
+  [BaseSepolia.chainId]: import.meta.env.VITE_BRIDGE_BASE_SEPOLIA_RPC_URL?.trim(),
+  [ArbitrumSepolia.chainId]: import.meta.env.VITE_BRIDGE_ARBITRUM_SEPOLIA_RPC_URL?.trim(),
+  [ArcTestnet.chainId]: import.meta.env.VITE_BRIDGE_ARC_TESTNET_RPC_URL?.trim(),
+};
+
+function bridgeRpcUrl(chainId: number): string {
+  const rpcUrl = BRIDGE_RPC_URLS[chainId];
+  if (!rpcUrl) throw new Error("BRIDGE_RPC_CONFIG_MISSING");
+  return rpcUrl;
+}
+
+function bridgeRpcConfigured(): boolean {
+  return [EthereumSepolia.chainId, BaseSepolia.chainId, ArbitrumSepolia.chainId, ArcTestnet.chainId]
+    .every((chainId) => Boolean(BRIDGE_RPC_URLS[chainId]));
+}
 
 type BridgeEstimateView = {
   fees: Array<{ type: string; amount: string | null; token: string }>;
@@ -94,6 +123,7 @@ export function BridgePanel({
   const estimateRequestRef = useRef(0);
   const balanceRequestRef = useRef(0);
   const source = BRIDGE_SOURCES.find((item) => item.key === sourceKey)!;
+  const rpcConfigured = bridgeRpcConfigured();
   const inputFingerprint = sourceKey + ":" + amount + ":" + speed + ":" + walletAddress;
 
   let parsedAmount: bigint | null = null;
@@ -107,15 +137,23 @@ export function BridgePanel({
     parsedAmount !== null &&
     sourceBalance !== null &&
     parsedAmount > sourceBalance;
-  const inputsReady = parsedAmount !== null && !exceedsSourceBalance;
+  const inputsReady = rpcConfigured && parsedAmount !== null && !exceedsSourceBalance;
 
   useEffect(() => {
     const requestId = ++balanceRequestRef.current;
     setSourceBalance(null);
     setSourceBalanceLoading(true);
     setSourceBalanceError(false);
+    let rpcUrl: string;
+    try {
+      rpcUrl = bridgeRpcUrl(source.chainId);
+    } catch {
+      setSourceBalanceError(true);
+      setSourceBalanceLoading(false);
+      return;
+    }
     const client = createPublicClient({
-      transport: http(source.rpcUrl, { retryCount: 0 }),
+      transport: http(rpcUrl, { retryCount: 0 }),
     });
     void client
       .readContract({
@@ -136,7 +174,7 @@ export function BridgePanel({
     return () => {
       if (requestId === balanceRequestRef.current) balanceRequestRef.current += 1;
     };
-  }, [source.rpcUrl, source.usdcAddress, walletAddress, sourceBalanceRefresh]);
+  }, [source.chainId, source.usdcAddress, walletAddress, sourceBalanceRefresh]);
 
   useEffect(() => {
     setEstimate(null);
@@ -181,11 +219,12 @@ export function BridgePanel({
   }
 
   async function buildBridge() {
+    if (!rpcConfigured) throw new Error("BRIDGE_RPC_CONFIG_MISSING");
     if (!inputsReady) throw new Error("BRIDGE_INPUT_REQUIRED");
     await assertActiveAccount();
     const [
       { AppKit, TransferSpeed, isRetryableError },
-      { createViemAdapterFromProvider },
+      { ViemAdapter },
     ] = await Promise.all([
       import("@circle-fin/app-kit"),
       import("@circle-fin/adapter-viem-v2"),
@@ -203,7 +242,25 @@ export function BridgePanel({
         items.includes(method) ? items : [...items, method],
       );
     });
-    const adapter = await createViemAdapterFromProvider({ provider });
+    const adapter = new ViemAdapter(
+      {
+        getPublicClient: ({ chain }) =>
+          createPublicClient({
+            chain,
+            transport: http(bridgeRpcUrl(chain.id), { retryCount: 0 }),
+          }),
+        getWalletClient: ({ chain }) =>
+          createWalletClient({
+            account: walletAddress,
+            chain,
+            transport: custom(provider),
+          }),
+      },
+      {
+        addressContext: "user-controlled",
+        supportedChains: [EthereumSepolia, BaseSepolia, ArbitrumSepolia, ArcTestnet],
+      },
+    );
     const params = {
       from: { adapter, chain: source.circleChain },
       to: {
@@ -372,6 +429,9 @@ export function BridgePanel({
         <span className="network-pill online">CCTP</span>
       </div>
       <p>{t("bridge.description")}</p>
+      {!rpcConfigured && (
+        <p className="feature-warning">{t("bridge.rpcConfigMissing")}</p>
+      )}
 
       <div className="bridge-workspace">
         <div className="bridge-form-card">
@@ -407,15 +467,20 @@ export function BridgePanel({
                     ? "—"
                     : formatUsdc(sourceBalance * 1_000_000_000_000n, locale) + " USDC"}
               </strong>
-              {sourceBalanceError && <small>{t("bridge.sourceBalanceError")}</small>}
-              {!sourceBalanceLoading && (
-                <button
-                  type="button"
-                  className="bridge-balance-refresh"
-                  onClick={() => setSourceBalanceRefresh((current) => current + 1)}
-                  aria-label={t("bridge.refreshBalanceAria")}
-                  title={t("bridge.refreshBalance")}
-                ><span aria-hidden="true">↻</span></button>
+              <button
+                type="button"
+                className={sourceBalanceLoading ? "balance-refresh-icon spinning" : "balance-refresh-icon"}
+                onClick={() => setSourceBalanceRefresh((current) => current + 1)}
+                disabled={!rpcConfigured || sourceBalanceLoading}
+                aria-label={t("bridge.refreshBalanceAria")}
+                title={t("bridge.refreshBalance")}
+              >
+                <span aria-hidden="true">↻</span>
+              </button>
+              {sourceBalanceError && (
+                <small>
+                  {t(rpcConfigured ? "bridge.sourceBalanceError" : "bridge.rpcConfigMissingShort")}
+                </small>
               )}
             </div>
             <label>
@@ -606,6 +671,9 @@ export function PasskeyFundsModal({
   const locale = (i18n.resolvedLanguage ?? i18n.language).startsWith("ja")
     ? "ja-JP" : "en-US";
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
+  const [injectedWallets, setInjectedWallets] = useState<InjectedWallet[]>([]);
+  const [showWalletPicker, setShowWalletPicker] = useState(false);
+  const [selectedWallet, setSelectedWallet] = useState<InjectedWallet | null>(null);
   const [provider, setProvider] = useState<EIP1193Provider | null>(null);
   const [browserAddress, setBrowserAddress] = useState<Address | null>(null);
   const [browserWalletName, setBrowserWalletName] = useState("");
@@ -642,6 +710,8 @@ export function PasskeyFundsModal({
     setAmount("");
     setStatus(null);
     setTransactionHash(null);
+    setShowWalletPicker(false);
+    setSelectedWallet(null);
     setProvider(null);
     setBrowserAddress(null);
     setBrowserWalletName("");
@@ -664,6 +734,12 @@ export function PasskeyFundsModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, working, onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    setInjectedWallets([]);
+    return listenForInjectedWallets(setInjectedWallets);
+  }, [open]);
+
   if (!open) return null;
 
   let parsedAmount: bigint | null = null;
@@ -683,24 +759,19 @@ export function PasskeyFundsModal({
     parsedAmount <= availableBalance &&
     browserAddress !== null;
 
-  async function connectBrowserWallet() {
-    const injected = (window as Window & { ethereum?: EIP1193Provider }).ethereum;
-    if (!injected) {
-      setStatus(t("passkeyFunds.browserMissing"));
-      return;
-    }
+  async function connectBrowserWallet(wallet: InjectedWallet) {
+    const injected = wallet.provider;
     setWorking("connect");
     setStatus(null);
     setTransactionHash(null);
     try {
-      const accounts = (await injected.request({
-        method: "eth_requestAccounts",
-      })) as Address[];
-      if (!accounts[0]) throw new Error("WALLET_ACCOUNT_MISSING");
-      const nextAddress = getAddress(accounts[0]);
+      const connected = await connectInjectedWallet(wallet);
+      const nextAddress = getAddress(connected.address);
+      setSelectedWallet(wallet);
       setProvider(injected);
       setBrowserAddress(nextAddress);
       setBrowserWalletName(injectedWalletName(injected));
+      setShowWalletPicker(false);
       await refreshBalances(nextAddress);
     } catch (error) {
       setStatus(t("passkeyFunds.error", { error: transferError(error) }));
@@ -709,7 +780,15 @@ export function PasskeyFundsModal({
     }
   }
 
-  function disconnectBrowserWallet() {
+  async function disconnectBrowserWallet() {
+    if (selectedWallet) {
+      try {
+        await revokeInjectedWallet(selectedWallet);
+      } catch {
+        // Some injected wallets do not support permission revocation.
+      }
+    }
+    setSelectedWallet(null);
     setProvider(null);
     setBrowserAddress(null);
     setBrowserWalletName("");
@@ -717,6 +796,7 @@ export function PasskeyFundsModal({
     setAmount("");
     setStatus(null);
     setTransactionHash(null);
+    setShowWalletPicker(false);
   }
 
   async function ensureArcNetwork(walletProvider: EIP1193Provider) {
@@ -849,21 +929,51 @@ export function PasskeyFundsModal({
                 <span>{browserWalletName}</span>
                 <code>{browserAddress.slice(0, 8) + "…" + browserAddress.slice(-6)}</code>
               </div>
-              <button type="button" onClick={disconnectBrowserWallet} disabled={working !== null}>
+              <button type="button" onClick={() => void disconnectBrowserWallet()} disabled={working !== null}>
                 {t("passkeyFunds.disconnect")}
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              className="funds-connect"
-              onClick={() => void connectBrowserWallet()}
-              disabled={working !== null}
-            >
-              {working === "connect"
-                ? t("header.connecting")
-                : t("passkeyFunds.connectBrowser")}
-            </button>
+            <>
+              <button
+                type="button"
+                className="funds-connect"
+                onClick={() => setShowWalletPicker((current) => !current)}
+                disabled={working !== null}
+                aria-expanded={showWalletPicker}
+              >
+                {working === "connect"
+                  ? t("header.connecting")
+                  : t("passkeyFunds.connectBrowser")}
+              </button>
+              {showWalletPicker && (
+                injectedWallets.length > 0 ? (
+                  <div className="wallet-picker funds-wallet-picker">
+                    {injectedWallets.map((wallet) => (
+                      <button
+                        key={wallet.id}
+                        type="button"
+                        className="wallet-choice"
+                        onClick={() => void connectBrowserWallet(wallet)}
+                        disabled={working !== null}
+                      >
+                        {wallet.icon ? (
+                          <img src={wallet.icon} width="28" height="28" alt="" />
+                        ) : (
+                          <span className="wallet-method-icon" aria-hidden="true">◈</span>
+                        )}
+                        <span>
+                          <strong>{wallet.name}</strong>
+                          <small>{wallet.rdns ?? t("walletModal.browser.injected")}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="feature-warning">{t("passkeyFunds.browserMissing")}</p>
+                )
+              )}
+            </>
           )}
 
           <div className="funds-balance-grid" aria-live="polite">

@@ -21,6 +21,10 @@ cp .env.example .env.local
 VITE_ARC_TIP_JAR_ADDRESS=0xYOUR_CONTRACT_ADDRESS
 VITE_CIRCLE_CLIENT_KEY=YOUR_PUBLIC_CIRCLE_CLIENT_KEY
 VITE_CIRCLE_CLIENT_URL=https://modular-sdk.circle.com/v1/rpc/w3s/buidl
+VITE_BRIDGE_ETHEREUM_SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+VITE_BRIDGE_BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+VITE_BRIDGE_ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
+VITE_BRIDGE_ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
 ```
 
 This value is public and will be included in the browser bundle.
@@ -40,12 +44,12 @@ Build command: npm run build
 Build output directory: dist
 ```
 
-No environment variable is required for the current deployment because the
-verified testnet contract address is the default. If you set
-`VITE_ARC_TIP_JAR_ADDRESS` in Cloudflare under Settings > Environment
-variables, remember that every `VITE_` value is public and bundled into the
-site. Never put a private key, seed phrase, API secret, or privileged RPC
-credential in a `VITE_` variable.
+Set the four `VITE_BRIDGE_*_RPC_URL` variables in Cloudflare for Bridge.
+All four are required and there is no fallback to App Kit's shared RPCs.
+The sample hosts are already included in `public/_headers`; update the CSP
+`connect-src` allowlist if you choose different hosts. Every `VITE_` value
+is public and bundled into the site. Never put a private key, seed phrase,
+API secret, or privileged RPC credential in a `VITE_` variable.
 
 Cloudflare creates a preview deployment for non-production branches and pull
 requests, and automatically deploys `main` after each push. The `public/_headers`
@@ -69,9 +73,9 @@ Browser Wallet Recovery is marked Beta until MetaMask and Rabby complete the pro
 
 ### Bridge
 
-The Bridge panel supports Ethereum Sepolia, Base Sepolia, and Arbitrum Sepolia. The connected Browser Wallet EOA is both the source signer and the Arc recipient; cross-wallet bridging is intentionally not exposed. A Passkey Wallet is Arc-only and must be replaced by a Browser Wallet session before bridging. The panel uses CCTP with `useForwarder: true`, automatically estimates after valid input changes, refreshes estimates every 60 seconds, provides an icon-only manual refresh, and preserves resumable `retryBridge()` handling. App Kit analytics and error reporting are disabled.
+The Bridge panel supports Ethereum Sepolia, Base Sepolia, and Arbitrum Sepolia. The connected Browser Wallet EOA is both the source signer and the Arc recipient; cross-wallet bridging is intentionally not exposed. A Passkey Wallet is Arc-only and must be replaced by a Browser Wallet session before bridging. The Bridge gate opens the EIP-6963 Browser Wallet chooser directly. The panel uses CCTP with `useForwarder: true`, automatically estimates after valid input changes, refreshes estimates every 60 seconds, provides an icon-only manual refresh, and preserves resumable `retryBridge()` handling. App Kit analytics and error reporting are disabled.
 
-The selected source chain's USDC balance is read from official App Kit chain metadata and shown before estimation. A Passkey Smart Account can technically be the Forwarding Service `recipientAddress`, but the current Arc-only Passkey session cannot sign as a Sepolia source and this single-wallet UI does not expose a separate destination.
+The selected source chain's USDC balance is shown before estimation. App Kit public clients are constructed from the four explicit public RPC environment variables; a missing variable disables Bridge with a safe error rather than falling back to a built-in/shared RPC. Browser Wallet writes continue through its selected EIP-1193 provider. A Passkey Smart Account can technically be the Forwarding Service `recipientAddress`, but the current Arc-only Passkey session cannot sign as a Sepolia source and this single-wallet UI does not expose a separate destination.
 
 An active Passkey Wallet exposes a wallet-menu Deposit/Withdraw modal. Its Browser Wallet connection is isolated from the active Tip Jar session; deposits are ordinary native Arc USDC transfers with the 0.01 USDC reserve, while withdrawals are sponsored Passkey user operations.
 

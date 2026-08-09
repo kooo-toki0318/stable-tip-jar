@@ -79,10 +79,47 @@ export function listenForInjectedWallets(
   };
 }
 
+export function discoverInjectedWallets(timeoutMs = 400): Promise<InjectedWallet[]> {
+  return new Promise((resolve) => {
+    let latest: InjectedWallet[] = [];
+    const stop = listenForInjectedWallets((wallets) => {
+      latest = wallets;
+    });
+    window.setTimeout(() => {
+      stop();
+      resolve(latest);
+    }, timeoutMs);
+  });
+}
+
+export async function revokeInjectedWallet(wallet: InjectedWallet): Promise<void> {
+  await withIsolatedWalletRequest(() =>
+    wallet.provider.request({
+      method: "wallet_revokePermissions",
+      params: [{ eth_accounts: {} }],
+    }),
+  );
+}
+
 export async function connectInjectedWallet(wallet: InjectedWallet): Promise<{
   address: Address;
   chainId: number;
 }> {
+  try {
+    await withIsolatedWalletRequest(() =>
+      wallet.provider.request({
+        method: "wallet_requestPermissions",
+        params: [{ eth_accounts: {} }],
+      }),
+    );
+  } catch (error) {
+    const code = (error as { code?: number } | null)?.code;
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    const unsupported =
+      code === -32601 || code === 4200 || message.includes("not supported");
+    if (!unsupported) throw error;
+  }
+
   const accounts = (await withIsolatedWalletRequest(() =>
     wallet.provider.request({
       method: "eth_requestAccounts",

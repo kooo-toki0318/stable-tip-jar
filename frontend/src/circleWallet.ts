@@ -195,16 +195,38 @@ async function buildPasskeySession(
       return waitForReceipt(hash);
     },
     async registerRecovery(recoveryAddress) {
+      const recoveryBundler = bundler.extend(runtime.circle.recoveryActions);
       try {
-        const recoveryBundler = bundler.extend(runtime.circle.recoveryActions);
-        const hash = await recoveryBundler.registerRecoveryAddress({
+        await recoveryBundler.estimateRegisterRecoveryAddressGas({
           account: smartAccount,
           recoveryAddress,
           paymaster: true,
         });
+      } catch (error) {
+        throw new Error("RECOVERY_REGISTRATION_SPONSORSHIP_FAILED", {
+          cause: error,
+        });
+      }
+
+      let hash: Hash;
+      try {
+        hash = await recoveryBundler.registerRecoveryAddress({
+          account: smartAccount,
+          recoveryAddress,
+          paymaster: true,
+        });
+      } catch (error) {
+        throw new Error("RECOVERY_REGISTRATION_SUBMISSION_FAILED", {
+          cause: error,
+        });
+      }
+
+      try {
         return await waitForReceipt(hash);
       } catch (error) {
-        throw new Error("RECOVERY_REGISTRATION_FAILED", { cause: error });
+        throw new Error("RECOVERY_REGISTRATION_RECEIPT_FAILED", {
+          cause: error,
+        });
       }
     },
   };

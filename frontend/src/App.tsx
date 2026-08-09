@@ -17,6 +17,7 @@ import {
   getAddress,
   http,
   isAddress,
+  isAddressEqual,
   parseUnits,
   toHex,
   type Address,
@@ -40,7 +41,12 @@ import {
   type ArcNetworkKey,
 } from "./arc";
 import type { PasskeyWalletSession } from "./circleWallet";
-import { isIsolatedWalletRequestActive } from "./eip6963";
+import {
+  connectInjectedWallet,
+  discoverInjectedWallets,
+  isIsolatedWalletRequestActive,
+  type InjectedWallet,
+} from "./eip6963";
 import { appPageFromHash, type AppPage } from "./appPage";
 
 const WalletModal = lazy(() => import("./WalletModal"));
@@ -108,6 +114,40 @@ const emptyStats: JarStats = {
   tipCount: 0n,
   claimCount: 0n,
 };
+
+const BROWSER_WALLET_METADATA_KEY = "arc-tip-jar-browser-wallet";
+type SavedBrowserWallet = {
+  id?: string;
+  rdns?: string;
+  address: Address;
+};
+
+const EXPLICIT_DISCONNECT_KEY = "arc-tip-jar-explicitly-disconnected";
+
+function readSavedBrowserWallet(): SavedBrowserWallet | null {
+  try {
+    const raw = window.localStorage.getItem(BROWSER_WALLET_METADATA_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<SavedBrowserWallet>;
+    if (!isAddress(value.address ?? "")) return null;
+    return {
+      address: getAddress(value.address!),
+      ...(value.id ? { id: value.id } : {}),
+      ...(value.rdns ? { rdns: value.rdns } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveBrowserWallet(wallet: InjectedWallet, address: Address) {
+  const metadata: SavedBrowserWallet = {
+    id: wallet.id,
+    rdns: wallet.rdns,
+    address: getAddress(address),
+  };
+  window.localStorage.setItem(BROWSER_WALLET_METADATA_KEY, JSON.stringify(metadata));
+}
 
 function shortAddress(address: Address): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -321,7 +361,7 @@ export default function App() {
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [passkeyFundsOpen, setPasskeyFundsOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
-  const [walletModalView, setWalletModalView] = useState<"choose" | "passkey" | "backup" | "recover">(
+  const [walletModalView, setWalletModalView] = useState<"choose" | "browser" | "passkey" | "backup" | "recover">(
     "choose",
   );
   const [chainId, setChainId] = useState<number | null>(null);
@@ -333,6 +373,7 @@ export default function App() {
   const [message, setMessage] = useState(() => t("send.defaultMessage"));
   const [stats, setStats] = useState<JarStats>(emptyStats);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
+  const [isRefreshingWalletBalance, setIsRefreshingWalletBalance] = useState(false);
   const [receivedTips, setReceivedTips] = useState<Tip[]>([]);
   const [showAllLatestTips, setShowAllLatestTips] = useState(false);
   const [sentTips, setSentTips] = useState<Tip[]>([]);
@@ -706,6 +747,17 @@ export default function App() {
         setWalletBalance(null);
     }
   }, [account, publicClient]);
+
+  async function refreshDisplayedWalletBalance() {
+    if (isRefreshingWalletBalance) return;
+    setIsRefreshingWalletBalance(true);
+    try {
+      await refreshWalletBalance();
+    } finally {
+      setIsRefreshingWalletBalance(false);
+    }
+  }
+
   const refreshActivity = useCallback(
     async (bypassCache = false) => {
       if (!account) {
@@ -799,8 +851,8 @@ export default function App() {
   }
 
   const syncWalletState = useCallback(async () => {
-    if (activeWalletKind === "passkey" || !window.ethereum) return;
-    if (window.localStorage.getItem("arc-tip-jar-disconnected") === "true") {
+    if (activeWalletKind === "passkey") return;
+    if (window.localStorage.getItem(EXPLICIT_DISCONNECT_KEY) === "true") {
       setAccount(null);
       setChainId(null);
       setPasskeySession(null);
@@ -808,18 +860,40 @@ export default function App() {
       return;
     }
 
-    const [accounts, walletChainId] = await Promise.all([
-      window.ethereum.request({ method: "eth_accounts" }) as Promise<Address[]>,
-      window.ethereum.request({ method: "eth_chainId" }) as Promise<string>,
-    ]);
+    const saved = readSavedBrowserWallet();
+    const wallets = await discoverInjectedWallets();
+    const selectedWallet =
+      wallets.find((wallet) => saved?.rdns && wallet.rdns === saved.rdns) ??
+      wallets.find((wallet) => saved?.id && wallet.id === saved.id) ??
+      wallets[0] ??
+      (window.ethereum
+        ? {
+            id: "legacy-injected",
+            name: "Browser Wallet",
+            provider: window.ethereum,
+          }
+        : null);
+    if (!selectedWallet) return;
 
-    setBrowserProvider(window.ethereum);
-    setAccount(accounts[0] ?? null);
-    setRecipientInput(accounts[0] ?? "");
-    const nextChainId = Number.parseInt(walletChainId, 16);
-    setChainId(nextChainId);
-    const detectedNetwork = getArcNetworkByChainId(nextChainId);
-    if (detectedNetwork) setSelectedNetworkKey(detectedNetwork.key);
+    try {
+      const [accounts, walletChainId] = await Promise.all([
+        selectedWallet.provider.request({ method: "eth_accounts" }) as Promise<Address[]>,
+        selectedWallet.provider.request({ method: "eth_chainId" }) as Promise<string>,
+      ]);
+      const restoredAddress = accounts.find((candidate) =>
+        saved ? isAddressEqual(candidate, saved.address) : true,
+      ) ?? accounts[0];
+      setBrowserProvider(selectedWallet.provider);
+      setAccount(restoredAddress ?? null);
+      setRecipientInput(restoredAddress ?? "");
+      if (restoredAddress) saveBrowserWallet(selectedWallet, restoredAddress);
+      const nextChainId = Number.parseInt(walletChainId, 16);
+      setChainId(nextChainId);
+      const detectedNetwork = getArcNetworkByChainId(nextChainId);
+      if (detectedNetwork) setSelectedNetworkKey(detectedNetwork.key);
+    } catch {
+      setBrowserProvider(null);
+    }
   }, [activeWalletKind]);
 
   useEffect(() => {
@@ -899,7 +973,7 @@ export default function App() {
       const accounts = (args[0] ?? []) as Address[];
       if (
         accounts.length > 0 &&
-        window.localStorage.getItem("arc-tip-jar-disconnected") === "true"
+        window.localStorage.getItem(EXPLICIT_DISCONNECT_KEY) === "true"
       ) {
         return;
       }
@@ -929,37 +1003,29 @@ export default function App() {
   }, [activeWalletKind, browserProvider]);
 
   function openWalletModal(
-    view: "choose" | "passkey" | "backup" | "recover" = "choose",
+    view: "choose" | "browser" | "passkey" | "backup" | "recover" = "choose",
   ) {
     setWalletMenuOpen(false);
     setWalletModalView(view);
     setWalletModalOpen(true);
   }
 
-  async function connectWallet(): Promise<boolean> {
-    if (!window.ethereum) {
-      setWalletStatus({ key: "status.wallet.providerMissing" });
-      return false;
-    }
-
+  async function connectWallet(wallet: InjectedWallet): Promise<boolean> {
+    const provider = wallet.provider;
     setIsConnecting(true);
     setWalletStatus(null);
     try {
-      const accounts = (await window.ethereum.request({
-        method: "eth_requestAccounts",
-      })) as Address[];
-      const nextAccount = accounts[0] ?? null;
+      const connected = await connectInjectedWallet(wallet);
+      const nextAccount = getAddress(connected.address);
 
-      window.localStorage.removeItem("arc-tip-jar-disconnected");
-      setBrowserProvider(window.ethereum);
+      window.localStorage.removeItem(EXPLICIT_DISCONNECT_KEY);
+      saveBrowserWallet(wallet, nextAccount);
+      setBrowserProvider(provider);
       setActiveWalletKind("browser");
       setPasskeySession(null);
       setAccount(nextAccount);
-      setRecipientInput(nextAccount ?? "");
-      const walletChainId = Number.parseInt(
-        (await window.ethereum.request({ method: "eth_chainId" })) as string,
-        16,
-      );
+      setRecipientInput(nextAccount);
+      const walletChainId = connected.chainId;
       setChainId(walletChainId);
 
       const detectedNetwork = getArcNetworkByChainId(walletChainId);
@@ -970,7 +1036,7 @@ export default function App() {
           values: { network: detectedNetwork.chain.name },
         });
       } else {
-        await switchToNetwork(selectedNetwork);
+        await switchToNetwork(selectedNetwork, provider);
         setWalletStatus({
           key: "status.wallet.connectedAndSwitched",
           values: { network: selectedNetwork.chain.name },
@@ -986,7 +1052,7 @@ export default function App() {
   }
 
   function activatePasskeyWallet(session: PasskeyWalletSession) {
-    window.localStorage.setItem("arc-tip-jar-disconnected", "true");
+    window.localStorage.removeItem(EXPLICIT_DISCONNECT_KEY);
     setActiveWalletKind("passkey");
     setPasskeySession(session);
     setAccount(session.address);
@@ -1014,7 +1080,9 @@ export default function App() {
       // local dApp session still prevents automatic reconnection.
     } finally {
       setWalletMenuOpen(false);
-      window.localStorage.setItem("arc-tip-jar-disconnected", "true");
+      window.localStorage.setItem(EXPLICIT_DISCONNECT_KEY, "true");
+      window.localStorage.removeItem(BROWSER_WALLET_METADATA_KEY);
+      setPasskeyFundsOpen(false);
       setAccount(null);
       setChainId(null);
       setPasskeySession(null);
@@ -1032,12 +1100,13 @@ export default function App() {
       setWalletStatus({ key: "status.wallet.disconnected" });
     }
   }
-  async function switchToNetwork(network: ArcNetworkConfig) {
-    if (!window.ethereum) return;
+  async function switchToNetwork(network: ArcNetworkConfig, requestedProvider?: BrowserEthereumProvider | null) {
+    const provider = requestedProvider ?? browserProvider ?? window.ethereum;
+    if (!provider) return;
 
     const requestedChainId = toHex(network.chain.id);
     try {
-      await window.ethereum.request({
+      await provider.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: requestedChainId }],
       });
@@ -1050,7 +1119,7 @@ export default function App() {
 
       if (code !== 4902) throw error;
 
-      await window.ethereum.request({
+      await provider.request({
         method: "wallet_addEthereumChain",
         params: [
           {
@@ -2037,13 +2106,25 @@ export default function App() {
 
                 <div className="wallet-balance-row">
                   <span>{t("send.connectedBalance")}</span>
-                  <strong>
-                    {walletBalance !== null
-                      ? t("common.usdcAmount", {
-                          amount: formatUsdc(walletBalance, locale),
-                        })
-                      : t("common.unavailable")}
-                  </strong>
+                  <div className="balance-value-with-refresh">
+                    <strong>
+                      {walletBalance !== null
+                        ? t("common.usdcAmount", {
+                            amount: formatUsdc(walletBalance, locale),
+                          })
+                        : t("common.unavailable")}
+                    </strong>
+                    <button
+                      className={isRefreshingWalletBalance ? "balance-refresh-icon spinning" : "balance-refresh-icon"}
+                      type="button"
+                      onClick={() => void refreshDisplayedWalletBalance()}
+                      disabled={isRefreshingWalletBalance}
+                      aria-label={t("send.refreshBalanceAria")}
+                      title={t("send.refreshBalance")}
+                    >
+                      <span aria-hidden="true">↻</span>
+                    </button>
+                  </div>
                   <small>
                     {t("send.balanceAvailable", { network: chain.name })}
                   </small>
@@ -2738,8 +2819,8 @@ export default function App() {
                   </p>
                 </div>
                 <div className="gate-actions">
-                  <button type="button" onClick={() => openWalletModal()}>
-                    {t("header.connectWallet")}
+                  <button type="button" onClick={() => openWalletModal("browser")}>
+                    {t("walletModal.choose.browserConnect")}
                   </button>
                 </div>
               </div>
