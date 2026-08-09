@@ -3063,9 +3063,11 @@ textarea:focus-visible {
 }
 
 .wallet-modal {
+  display: flex;
   width: min(720px, 100%);
   max-height: min(880px, calc(100dvh - 40px));
-  overflow: auto;
+  overflow: hidden;
+  flex-direction: column;
   color: #eef7f2;
   background:
     radial-gradient(circle at 100% 0%, rgba(105, 245, 173, 0.11), transparent 22rem),
@@ -3076,10 +3078,10 @@ textarea:focus-visible {
 }
 
 .wallet-modal-header {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 2;
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
@@ -3109,6 +3111,9 @@ textarea:focus-visible {
 
 .wallet-modal-body {
   display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   gap: 18px;
   padding: 24px 28px 28px;
 }
@@ -3397,6 +3402,7 @@ textarea:focus-visible {
 }
 
 .wallet-modal-status {
+  flex: 0 0 auto;
   margin: 0 28px 22px;
   padding: 12px 14px;
   color: #f5d9a0;
@@ -3406,11 +3412,165 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 
+.funds-modal {
+  width: min(640px, 100%);
+}
+
+.funds-modal-body {
+  gap: 16px;
+}
+
+.funds-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: 13px;
+}
+
+.wallet-modal .funds-tabs button {
+  min-height: 44px;
+  color: #879b91;
+  background: transparent;
+  border-radius: 9px;
+  font-size: 0.78rem;
+}
+
+.wallet-modal .funds-tabs button.active {
+  color: #07110d;
+  background: #8df8c2;
+}
+
+.funds-browser-wallet {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  background: rgba(105, 245, 173, 0.055);
+  border: 1px solid rgba(105, 245, 173, 0.18);
+  border-radius: 13px;
+}
+
+.funds-browser-wallet > div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+
+.funds-browser-wallet span {
+  color: #dce9e2;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.funds-browser-wallet code {
+  color: #879b91;
+  font-size: 0.7rem;
+}
+
+.wallet-modal .funds-browser-wallet button {
+  min-height: 40px;
+  padding: 8px 10px;
+  color: #d2aaa0;
+  background: transparent;
+  font-size: 0.68rem;
+}
+
+.funds-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.funds-balance-grid > div {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 13px;
+}
+
+.funds-balance-grid span,
+.funds-balance-grid small {
+  color: #7f948a;
+  font-size: 0.68rem;
+}
+
+.funds-balance-grid strong {
+  font-size: 0.95rem;
+}
+
+.funds-amount-label {
+  display: grid;
+  gap: 7px;
+  color: #c5d3cc;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.funds-amount-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  background: #07120e;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 11px;
+}
+
+.funds-amount-input input {
+  min-width: 0;
+  min-height: 50px;
+  padding: 11px 13px;
+  color: #f4f7f5;
+  background: transparent;
+  border: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.wallet-modal .funds-amount-input button {
+  min-height: 36px;
+  padding: 7px 9px;
+  color: #8df8c2;
+  background: rgba(105, 245, 173, 0.08);
+  border-radius: 8px;
+  font-size: 0.66rem;
+}
+
+.funds-amount-input strong {
+  color: #879b91;
+  font-size: 0.7rem;
+}
+
+.funds-submit {
+  width: 100%;
+}
+
+.wallet-modal-status.funds-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+}
+
+.funds-status a {
+  flex: 0 0 auto;
+  color: #9cf5c5;
+  font-size: 0.72rem;
+}
+
 .wallet-modal-footer {
-  position: sticky;
-  bottom: 0;
+  position: relative;
   z-index: 2;
   display: grid;
+  flex: 0 0 auto;
   gap: 7px;
   padding: 17px 28px 22px;
   text-align: center;
@@ -3505,6 +3665,57 @@ textarea:focus-visible {
 .bridge-panel .bridge-fields {
   grid-template-columns: 1fr;
   gap: 13px;
+}
+
+.bridge-source-balance {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 11px 12px;
+  background: rgba(123, 177, 255, 0.045);
+  border: 1px solid rgba(123, 177, 255, 0.12);
+  border-radius: 11px;
+}
+
+.bridge-source-balance > span,
+.bridge-source-balance small {
+  color: #7f948a;
+  font-size: 0.68rem;
+}
+
+.bridge-source-balance strong {
+  color: #dce9e2;
+  font-size: 0.82rem;
+}
+
+.bridge-source-balance small {
+  grid-column: 1 / -1;
+}
+
+.bridge-balance-refresh {
+  display: grid;
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  place-items: center;
+  color: #8fa89c;
+  background: transparent;
+  border-radius: 9px;
+}
+
+.bridge-balance-refresh:hover {
+  color: #9cf5c5;
+  background: rgba(105, 245, 173, 0.08);
+}
+
+.bridge-balance-warning {
+  margin: 0;
+  color: #e8ae9b;
+  font-size: 0.74rem;
 }
 
 .bridge-amount-input {
@@ -4319,4 +4530,14 @@ select:focus-visible {
     flex-direction: column;
     gap: 3px;
   }
+
+  .funds-balance-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wallet-modal-status.funds-status {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
 }

@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://rpc.testnet.arc.network wss://rpc.testnet.arc.network https://modular-sdk.circle.com https://iris-api-sandbox.circle.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://rpc.testnet.arc.network wss://rpc.testnet.arc.network https://modular-sdk.circle.com https://iris-api-sandbox.circle.com https://ethereum-sepolia-rpc.publicnode.com https://sepolia.base.org https://sepolia-rollup.arbitrum.io; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   Permissions-Policy: camera=(), geolocation=(), microphone=(), publickey-credentials-create=(self), publickey-credentials-get=(self)
   Referrer-Policy: strict-origin-when-cross-origin
   X-Content-Type-Options: nosniff

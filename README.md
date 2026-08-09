@@ -99,6 +99,7 @@ The frontend also supports Circle Modular Wallets on Arc Testnet:
 
 - Browser Wallet and Passkey Smart Account as separate active wallet modes
 - Gas Station-sponsored Passkey Tip, Claim, and Recovery user operations
+- Native Arc USDC deposit/withdraw between an active Passkey Wallet and a separately connected Browser Wallet
 - Browser Wallet Recovery (Beta) or an in-memory 12-word recovery phrase
 - CCTP Bridge from Ethereum, Base, and Arbitrum Sepolia to the active Arc address
 - Circle Forwarding Service for destination minting without an Arc-side wallet switch
@@ -106,6 +107,8 @@ The frontend also supports Circle Modular Wallets on Arc Testnet:
 The interface uses two hash-routed surfaces: `#/tip` for Tip/Claim and `#/bridge` for CCTP. Wallet connection, Passkey creation, backup setup, and recovery share one modal opened from either page. The Tip page also explains Passkey benefits when disconnected and promotes Passkey Wallets while a Browser Wallet is active.
 
 Recovery adds a new Passkey owner; it does not remove a lost old Passkey. Recovery provider requests remain isolated from the wallet currently driving the Tip Jar dashboard. Browser Wallet Recovery opens the default injected wallet directly and still requires the documented MetaMask/Rabby production smoke test. The current Bridge flow is intentionally single-wallet: the connected Browser Wallet EOA is both the Sepolia source and the Arc recipient. Passkey Wallet sessions are Arc-only and must switch to a Browser Wallet before bridging.
+
+The Bridge shows the connected EOA's USDC balance on the selected source chain. A Passkey Smart Account can technically be a Forwarding Service recipient, but the current Arc-only Passkey session cannot sign as a Sepolia source and cross-wallet bridge destinations are not exposed. When a Passkey Wallet is active, its wallet menu provides an isolated Browser Wallet session for native Arc USDC deposits and withdrawals.
 
 ## Repository structure
 

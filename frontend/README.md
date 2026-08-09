@@ -71,6 +71,10 @@ Browser Wallet Recovery is marked Beta until MetaMask and Rabby complete the pro
 
 The Bridge panel supports Ethereum Sepolia, Base Sepolia, and Arbitrum Sepolia. The connected Browser Wallet EOA is both the source signer and the Arc recipient; cross-wallet bridging is intentionally not exposed. A Passkey Wallet is Arc-only and must be replaced by a Browser Wallet session before bridging. The panel uses CCTP with `useForwarder: true`, automatically estimates after valid input changes, refreshes estimates every 60 seconds, provides an icon-only manual refresh, and preserves resumable `retryBridge()` handling. App Kit analytics and error reporting are disabled.
 
+The selected source chain's USDC balance is read from official App Kit chain metadata and shown before estimation. A Passkey Smart Account can technically be the Forwarding Service `recipientAddress`, but the current Arc-only Passkey session cannot sign as a Sepolia source and this single-wallet UI does not expose a separate destination.
+
+An active Passkey Wallet exposes a wallet-menu Deposit/Withdraw modal. Its Browser Wallet connection is isolated from the active Tip Jar session; deposits are ordinary native Arc USDC transfers with the 0.01 USDC reserve, while withdrawals are sponsored Passkey user operations.
+
 ## Checks
 
 ```bash

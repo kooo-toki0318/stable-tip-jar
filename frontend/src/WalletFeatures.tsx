@@ -1,13 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  erc20Abi,
   formatUnits,
+  getAddress,
+  http,
   isAddressEqual,
   parseUnits,
   type Address,
   type EIP1193Provider,
+  type Hash,
 } from "viem";
+import { ArbitrumSepolia, BaseSepolia, EthereumSepolia } from "@circle-fin/app-kit/chains";
 import { withIsolatedWalletRequest } from "./eip6963";
+import { formatUsdc } from "./formatters";
+import { arcTestnet } from "./arc";
+import type { PasskeyWalletSession } from "./circleWallet";
 
 function cleanError(error: unknown): string {
   if (!(error instanceof Error)) return "REQUEST_FAILED";
@@ -29,12 +40,14 @@ function cleanError(error: unknown): string {
 type BridgeSource = {
   key: "ethereum" | "base" | "arbitrum";
   circleChain: "Ethereum_Sepolia" | "Base_Sepolia" | "Arbitrum_Sepolia";
+  rpcUrl: string;
+  usdcAddress: Address;
 };
 
 const BRIDGE_SOURCES: BridgeSource[] = [
-  { key: "ethereum", circleChain: "Ethereum_Sepolia" },
-  { key: "base", circleChain: "Base_Sepolia" },
-  { key: "arbitrum", circleChain: "Arbitrum_Sepolia" },
+  { key: "ethereum", circleChain: "Ethereum_Sepolia", rpcUrl: EthereumSepolia.rpcEndpoints[0], usdcAddress: getAddress(EthereumSepolia.usdcAddress) },
+  { key: "base", circleChain: "Base_Sepolia", rpcUrl: BaseSepolia.rpcEndpoints[0], usdcAddress: getAddress(BaseSepolia.usdcAddress) },
+  { key: "arbitrum", circleChain: "Arbitrum_Sepolia", rpcUrl: ArbitrumSepolia.rpcEndpoints[0], usdcAddress: getAddress(ArbitrumSepolia.usdcAddress) },
 ];
 
 type BridgeEstimateView = {
@@ -60,7 +73,9 @@ export function BridgePanel({
   provider: EIP1193Provider;
   onComplete: () => void | Promise<void>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = (i18n.resolvedLanguage ?? i18n.language).startsWith("ja")
+    ? "ja-JP" : "en-US";
   const [sourceKey, setSourceKey] = useState<BridgeSource["key"]>("ethereum");
   const [amount, setAmount] = useState("");
   const [speed, setSpeed] = useState<"FAST" | "SLOW">("FAST");
@@ -71,8 +86,13 @@ export function BridgePanel({
   const [estimating, setEstimating] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [estimateRefresh, setEstimateRefresh] = useState(0);
+  const [sourceBalance, setSourceBalance] = useState<bigint | null>(null);
+  const [sourceBalanceLoading, setSourceBalanceLoading] = useState(true);
+  const [sourceBalanceError, setSourceBalanceError] = useState(false);
+  const [sourceBalanceRefresh, setSourceBalanceRefresh] = useState(0);
   const estimateFingerprintRef = useRef("");
   const estimateRequestRef = useRef(0);
+  const balanceRequestRef = useRef(0);
   const source = BRIDGE_SOURCES.find((item) => item.key === sourceKey)!;
   const inputFingerprint = sourceKey + ":" + amount + ":" + speed + ":" + walletAddress;
 
@@ -83,7 +103,40 @@ export function BridgePanel({
   } catch {
     parsedAmount = null;
   }
-  const inputsReady = parsedAmount !== null;
+  const exceedsSourceBalance =
+    parsedAmount !== null &&
+    sourceBalance !== null &&
+    parsedAmount > sourceBalance;
+  const inputsReady = parsedAmount !== null && !exceedsSourceBalance;
+
+  useEffect(() => {
+    const requestId = ++balanceRequestRef.current;
+    setSourceBalance(null);
+    setSourceBalanceLoading(true);
+    setSourceBalanceError(false);
+    const client = createPublicClient({
+      transport: http(source.rpcUrl, { retryCount: 0 }),
+    });
+    void client
+      .readContract({
+        address: source.usdcAddress,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [walletAddress],
+      })
+      .then((balance) => {
+        if (requestId === balanceRequestRef.current) setSourceBalance(balance);
+      })
+      .catch(() => {
+        if (requestId === balanceRequestRef.current) setSourceBalanceError(true);
+      })
+      .finally(() => {
+        if (requestId === balanceRequestRef.current) setSourceBalanceLoading(false);
+      });
+    return () => {
+      if (requestId === balanceRequestRef.current) balanceRequestRef.current += 1;
+    };
+  }, [source.rpcUrl, source.usdcAddress, walletAddress, sourceBalanceRefresh]);
 
   useEffect(() => {
     setEstimate(null);
@@ -95,6 +148,11 @@ export function BridgePanel({
 
   useEffect(() => {
     if (!inputsReady || working !== null) {
+      if (!inputsReady) {
+        estimateRequestRef.current += 1;
+        setEstimate(null);
+        estimateFingerprintRef.current = "";
+      }
       setEstimating(false);
       return;
     }
@@ -238,6 +296,7 @@ export function BridgePanel({
       setProgress(result.steps.map((step) => step.name + ":" + step.state));
       if (result.state === "success") {
         setStatus(t("bridge.success"));
+        setSourceBalanceRefresh((current) => current + 1);
         await onComplete();
       } else {
         setStatus(t("bridge.softError"));
@@ -269,6 +328,7 @@ export function BridgePanel({
       setProgress(result.steps.map((step) => step.name + ":" + step.state));
       if (result.state === "success") {
         setStatus(t("bridge.success"));
+        setSourceBalanceRefresh((current) => current + 1);
         await onComplete();
       } else {
         setStatus(t("bridge.softError"));
@@ -334,6 +394,30 @@ export function BridgePanel({
                 <option value="arbitrum">Arbitrum Sepolia</option>
               </select>
             </label>
+            <div className="bridge-source-balance" aria-live="polite">
+              <span>
+                {t("bridge.sourceBalance", {
+                  network: t("bridge.sourceName." + sourceKey),
+                })}
+              </span>
+              <strong>
+                {sourceBalanceLoading
+                  ? t("common.loading")
+                  : sourceBalance === null
+                    ? "—"
+                    : formatUsdc(sourceBalance * 1_000_000_000_000n, locale) + " USDC"}
+              </strong>
+              {sourceBalanceError && <small>{t("bridge.sourceBalanceError")}</small>}
+              {!sourceBalanceLoading && (
+                <button
+                  type="button"
+                  className="bridge-balance-refresh"
+                  onClick={() => setSourceBalanceRefresh((current) => current + 1)}
+                  aria-label={t("bridge.refreshBalanceAria")}
+                  title={t("bridge.refreshBalance")}
+                ><span aria-hidden="true">↻</span></button>
+              )}
+            </div>
             <label>
               <span>{t("bridge.amount")}</span>
               <div className="bridge-amount-input">
@@ -394,6 +478,9 @@ export function BridgePanel({
             </div>
           </div>
 
+          {exceedsSourceBalance && (
+            <p className="bridge-balance-warning">{t("bridge.insufficientBalance")}</p>
+          )}
           {!inputsReady ? (
             <div className="estimate-empty">
               <span aria-hidden="true">≈</span>
@@ -448,7 +535,7 @@ export function BridgePanel({
             className="bridge-submit"
             type="button"
             onClick={() => void executeBridge()}
-            disabled={!estimateValid || working !== null || estimating}
+            disabled={!inputsReady || !estimateValid || working !== null || estimating}
           >
             {working === "bridge" ? t("bridge.bridging") : t("bridge.execute")}
           </button>
@@ -477,5 +564,385 @@ export function BridgePanel({
       )}
       <small>{t("bridge.noAutoSwitch")}</small>
     </section>
+  );
+}
+const ARC_GAS_RESERVE = parseUnits("0.01", 18);
+const arcFundsClient = createPublicClient({
+  chain: arcTestnet,
+  transport: http("/rpc", { retryCount: 0 }),
+});
+
+function injectedWalletName(provider: EIP1193Provider): string {
+  const flags = provider as EIP1193Provider & {
+    isMetaMask?: boolean;
+    isRabby?: boolean;
+  };
+  if (flags.isRabby) return "Rabby";
+  if (flags.isMetaMask) return "MetaMask";
+  return "Browser Wallet";
+}
+
+function transferError(error: unknown): string {
+  if (!(error instanceof Error)) return "REQUEST_FAILED";
+  const normalized = error.message.toLowerCase();
+  if (normalized.includes("user rejected") || normalized.includes("user denied")) {
+    return "WALLET_REQUEST_REJECTED";
+  }
+  return error.message.split("\n")[0].trim() || "REQUEST_FAILED";
+}
+
+export function PasskeyFundsModal({
+  open,
+  session,
+  onClose,
+  onBalanceChanged,
+}: {
+  open: boolean;
+  session: PasskeyWalletSession;
+  onClose: () => void;
+  onBalanceChanged: () => void | Promise<void>;
+}) {
+  const { t, i18n } = useTranslation();
+  const locale = (i18n.resolvedLanguage ?? i18n.language).startsWith("ja")
+    ? "ja-JP" : "en-US";
+  const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
+  const [provider, setProvider] = useState<EIP1193Provider | null>(null);
+  const [browserAddress, setBrowserAddress] = useState<Address | null>(null);
+  const [browserWalletName, setBrowserWalletName] = useState("");
+  const [browserBalance, setBrowserBalance] = useState<bigint | null>(null);
+  const [passkeyBalance, setPasskeyBalance] = useState<bigint | null>(null);
+  const [amount, setAmount] = useState("");
+  const [working, setWorking] = useState<"connect" | "deposit" | "withdraw" | null>(null);
+  const [loadingBalances, setLoadingBalances] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [transactionHash, setTransactionHash] = useState<Hash | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  async function refreshBalances(nextBrowserAddress = browserAddress) {
+    setLoadingBalances(true);
+    try {
+      const [nextPasskeyBalance, nextBrowserBalance] = await Promise.all([
+        arcFundsClient.getBalance({ address: session.address }),
+        nextBrowserAddress
+          ? arcFundsClient.getBalance({ address: nextBrowserAddress })
+          : Promise.resolve(null),
+      ]);
+      setPasskeyBalance(nextPasskeyBalance);
+      setBrowserBalance(nextBrowserBalance);
+    } catch {
+      setStatus(t("passkeyFunds.balanceError"));
+    } finally {
+      setLoadingBalances(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    setTab("deposit");
+    setAmount("");
+    setStatus(null);
+    setTransactionHash(null);
+    setProvider(null);
+    setBrowserAddress(null);
+    setBrowserWalletName("");
+    setBrowserBalance(null);
+    void refreshBalances(null);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, session.address]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && working === null) onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, working, onClose]);
+
+  if (!open) return null;
+
+  let parsedAmount: bigint | null = null;
+  try {
+    const parsed = parseUnits(amount, 18);
+    parsedAmount = parsed > 0n ? parsed : null;
+  } catch {
+    parsedAmount = null;
+  }
+  const browserSpendable =
+    browserBalance === null || browserBalance <= ARC_GAS_RESERVE
+      ? 0n
+      : browserBalance - ARC_GAS_RESERVE;
+  const availableBalance = tab === "deposit" ? browserSpendable : (passkeyBalance ?? 0n);
+  const amountValid =
+    parsedAmount !== null &&
+    parsedAmount <= availableBalance &&
+    browserAddress !== null;
+
+  async function connectBrowserWallet() {
+    const injected = (window as Window & { ethereum?: EIP1193Provider }).ethereum;
+    if (!injected) {
+      setStatus(t("passkeyFunds.browserMissing"));
+      return;
+    }
+    setWorking("connect");
+    setStatus(null);
+    setTransactionHash(null);
+    try {
+      const accounts = (await injected.request({
+        method: "eth_requestAccounts",
+      })) as Address[];
+      if (!accounts[0]) throw new Error("WALLET_ACCOUNT_MISSING");
+      const nextAddress = getAddress(accounts[0]);
+      setProvider(injected);
+      setBrowserAddress(nextAddress);
+      setBrowserWalletName(injectedWalletName(injected));
+      await refreshBalances(nextAddress);
+    } catch (error) {
+      setStatus(t("passkeyFunds.error", { error: transferError(error) }));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function disconnectBrowserWallet() {
+    setProvider(null);
+    setBrowserAddress(null);
+    setBrowserWalletName("");
+    setBrowserBalance(null);
+    setAmount("");
+    setStatus(null);
+    setTransactionHash(null);
+  }
+
+  async function ensureArcNetwork(walletProvider: EIP1193Provider) {
+    const chainId = (await walletProvider.request({ method: "eth_chainId" })) as string;
+    if (Number.parseInt(chainId, 16) === arcTestnet.id) return;
+    try {
+      await walletProvider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: "0x" + arcTestnet.id.toString(16) }],
+      });
+    } catch (error) {
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? Number((error as { code: unknown }).code)
+          : null;
+      if (code !== 4902) throw error;
+      await walletProvider.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: "0x" + arcTestnet.id.toString(16),
+          chainName: arcTestnet.name,
+          nativeCurrency: arcTestnet.nativeCurrency,
+          rpcUrls: [...arcTestnet.rpcUrls.default.http],
+          blockExplorerUrls: [arcTestnet.blockExplorers.default.url],
+        }],
+      });
+    }
+  }
+
+  async function submitTransfer() {
+    if (!amountValid || !parsedAmount || !browserAddress) return;
+    setWorking(tab);
+    setStatus(null);
+    setTransactionHash(null);
+    try {
+      let hash: Hash;
+      if (tab === "deposit") {
+        if (!provider) return;
+        await ensureArcNetwork(provider);
+        const walletClient = createWalletClient({
+          account: browserAddress,
+          chain: arcTestnet,
+          transport: custom(provider),
+        });
+        hash = await walletClient.sendTransaction({
+          to: session.address,
+          value: parsedAmount,
+        });
+        const receipt = await arcFundsClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") throw new Error("TRANSFER_REVERTED");
+      } else {
+        const receipt = await session.sendNative({
+          to: browserAddress,
+          value: parsedAmount,
+        });
+        hash = receipt.transactionHash;
+      }
+      setTransactionHash(hash);
+      setAmount("");
+      setStatus(t("passkeyFunds.success." + tab));
+      await refreshBalances(browserAddress);
+      await onBalanceChanged();
+    } catch (error) {
+      setStatus(t("passkeyFunds.error", { error: transferError(error) }));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function setMaximumAmount() {
+    setAmount(formatUnits(availableBalance, 18));
+  }
+
+  return (
+    <div
+      className="wallet-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && working === null) onClose();
+      }}
+    >
+      <section
+        className="wallet-modal funds-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="passkey-funds-title"
+      >
+        <div className="wallet-modal-header">
+          <div>
+            <span className="section-label">{t("passkeyFunds.eyebrow")}</span>
+            <h2 id="passkey-funds-title">{t("passkeyFunds.title")}</h2>
+          </div>
+          <button
+            ref={closeButtonRef}
+            className="wallet-modal-close"
+            type="button"
+            aria-label={t("walletModal.closeAria")}
+            onClick={onClose}
+            disabled={working !== null}
+          >×</button>
+        </div>
+
+        <div className="wallet-modal-body funds-modal-body">
+          <div className="funds-tabs" role="tablist" aria-label={t("passkeyFunds.tabsAria")}>
+            {(["deposit", "withdraw"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                role="tab"
+                aria-selected={tab === item}
+                className={tab === item ? "active" : ""}
+                onClick={() => {
+                  setTab(item);
+                  setAmount("");
+                  setStatus(null);
+                  setTransactionHash(null);
+                }}
+                disabled={working !== null}
+              >
+                {t("passkeyFunds.tab." + item)}
+              </button>
+            ))}
+          </div>
+
+          <p className="wallet-modal-lead">{t("passkeyFunds.description." + tab)}</p>
+
+          {browserAddress ? (
+            <div className="funds-browser-wallet">
+              <div>
+                <span>{browserWalletName}</span>
+                <code>{browserAddress.slice(0, 8) + "…" + browserAddress.slice(-6)}</code>
+              </div>
+              <button type="button" onClick={disconnectBrowserWallet} disabled={working !== null}>
+                {t("passkeyFunds.disconnect")}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="funds-connect"
+              onClick={() => void connectBrowserWallet()}
+              disabled={working !== null}
+            >
+              {working === "connect"
+                ? t("header.connecting")
+                : t("passkeyFunds.connectBrowser")}
+            </button>
+          )}
+
+          <div className="funds-balance-grid" aria-live="polite">
+            <div>
+              <span>{t("passkeyFunds.browserBalance")}</span>
+              <strong>
+                {loadingBalances && browserBalance === null
+                  ? t("common.loading")
+                  : browserBalance === null
+                    ? "—"
+                    : formatUsdc(browserBalance, locale) + " USDC"}
+              </strong>
+              <small>{t("passkeyFunds.reserveNote")}</small>
+            </div>
+            <div>
+              <span>{t("passkeyFunds.passkeyBalance")}</span>
+              <strong>
+                {loadingBalances && passkeyBalance === null
+                  ? t("common.loading")
+                  : passkeyBalance === null
+                    ? "—"
+                    : formatUsdc(passkeyBalance, locale) + " USDC"}
+              </strong>
+              <small>{session.address.slice(0, 8) + "…" + session.address.slice(-6)}</small>
+            </div>
+          </div>
+
+          <label className="funds-amount-label">
+            <span>{t("passkeyFunds.amount")}</span>
+            <div className="funds-amount-input">
+              <input
+                inputMode="decimal"
+                value={amount}
+                placeholder="0.00"
+                onChange={(event) => setAmount(event.target.value)}
+                disabled={working !== null || !browserAddress}
+              />
+              <button
+                type="button"
+                onClick={setMaximumAmount}
+                disabled={working !== null || !browserAddress || availableBalance === 0n}
+              >
+                {t("passkeyFunds.max")}
+              </button>
+              <strong>USDC</strong>
+            </div>
+          </label>
+
+          {parsedAmount !== null && parsedAmount > availableBalance && (
+            <p className="bridge-balance-warning">{t("passkeyFunds.insufficient")}</p>
+          )}
+
+          <button
+            type="button"
+            className="funds-submit"
+            onClick={() => void submitTransfer()}
+            disabled={!amountValid || working !== null}
+          >
+            {working === tab
+              ? t("passkeyFunds.working." + tab)
+              : t("passkeyFunds.action." + tab)}
+          </button>
+
+          {status && (
+            <div className="wallet-modal-status funds-status" role="status" aria-live="polite">
+              <span>{status}</span>
+              {transactionHash && (
+                <a
+                  href={arcTestnet.blockExplorers.default.url + "/tx/" + transactionHash}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t("passkeyFunds.viewTransaction")} ↗
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }

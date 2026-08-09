@@ -36,6 +36,7 @@
     "activePasskey": "Passkey",
     "passkeyActionCreate": "Create or Restore Passkey Wallet",
     "passkeyActionBackup": "Back up Passkey Wallet",
+    "passkeyFundsAction": "Deposit or withdraw",
     "copyWalletAddressAria": "Copy connected wallet {{address}}",
     "copyWalletAddress": "Copy wallet address",
     "walletAddressCopied": "Wallet address copied",
@@ -323,6 +324,11 @@
     "description": "Fees are estimated automatically as inputs change, then CCTP Forwarding Service delivers to the same address on Arc.",
     "connectedWallet": "Source and Arc recipient",
     "sameAddressHint": "The same EOA address is used on both sides",
+    "sourceBalance": "{{network}} USDC balance",
+    "sourceBalanceError": "Balance could not be loaded.",
+    "refreshBalance": "Refresh source balance",
+    "refreshBalanceAria": "Refresh source USDC balance",
+    "insufficientBalance": "The amount is higher than this wallet's USDC balance.",
     "source": "Source network",
     "amount": "USDC amount",
     "speed": "Transfer speed",
@@ -404,6 +410,12 @@
       "RECOVERY_ACCOUNT_MISMATCH": "Connect the Browser Wallet or enter the recovery phrase registered for this recovery method.",
       "RECOVERY_WALLET_REQUIRED": "Install or open a Browser Wallet, then connect it here.",
       "RECOVERY_PHRASE_INVALID": "The 12 words or checksum are invalid.",
+      "RECOVERY_MAPPING_LOOKUP_FAILED": "Circle could not look up the Smart Account mapped to this recovery signer.",
+      "RECOVERY_ACCOUNT_BUILD_FAILED": "Circle could not construct the temporary recovery account.",
+      "RECOVERY_PASSKEY_CREATE_FAILED": "The new Passkey could not be created.",
+      "RECOVERY_EXECUTION_FAILED": "Circle rejected the recovery user operation before submission. Check the recovery mapping and Gas Station policy.",
+      "RECOVERY_RECEIPT_FAILED": "The recovery user operation was submitted but its Arc receipt could not be confirmed.",
+      "RECOVERED_WALLET_OPEN_FAILED": "Recovery completed, but the wallet could not be reopened with the new Passkey. Use the existing Passkey flow to retry opening it.",
       "SMART_ACCOUNT_NONCE_INVALID": "The Smart Account is still initializing. Wait briefly and retry.",
       "SMART_ACCOUNT_INITIALIZING": "The Smart Account is still initializing. Wait briefly and retry.",
       "RECOVERY_GAS_SPONSOR_FAILED": "Gas Station did not sponsor this recovery operation. Check the recovery policy and retry.",
@@ -470,7 +482,15 @@
       "phraseHint": "Your offline phrase is used in memory only for this recovery.",
       "phrasePlaceholder": "Enter all 12 words separated by spaces",
       "phraseAction": "Restore with recovery phrase",
-      "working": "Registering a new Passkey…"
+      "working": "Registering a new Passkey…",
+      "progress": {
+        "mapping": "Finding the Smart Account registered to this recovery signer…",
+        "account": "Preparing the temporary recovery account…",
+        "passkey": "Create the new Passkey on this device…",
+        "submitting": "Submitting the recovery operation to Circle…",
+        "confirming": "Waiting for recovery confirmation on Arc…",
+        "reopening": "Opening the recovered wallet with the new Passkey…"
+      }
     },
     "recovered": {
       "title": "Recovery complete",
@@ -485,5 +505,42 @@
       "description": "Create a new Passkey Wallet or restore the original wallet with a registered recovery method.",
       "connectLink": "Want to connect an existing wallet? Open Connect Wallet"
     }
+  },
+  "passkeyFunds": {
+    "eyebrow": "PASSKEY WALLET",
+    "title": "Move USDC",
+    "tabsAria": "Passkey Wallet transfer direction",
+    "tab": {
+      "deposit": "Deposit",
+      "withdraw": "Withdraw"
+    },
+    "description": {
+      "deposit": "Send native USDC from a Browser Wallet to this Passkey Wallet on Arc.",
+      "withdraw": "Send native USDC from this Passkey Wallet to the connected Browser Wallet."
+    },
+    "connectBrowser": "Connect Browser Wallet",
+    "disconnect": "Disconnect",
+    "browserMissing": "Install or open a Browser Wallet to continue.",
+    "browserBalance": "Browser Wallet on Arc",
+    "passkeyBalance": "Passkey Wallet on Arc",
+    "reserveNote": "0.01 USDC is kept for Browser Wallet gas.",
+    "balanceError": "One or more Arc balances could not be loaded.",
+    "amount": "Amount",
+    "max": "MAX",
+    "insufficient": "The amount is higher than the available balance.",
+    "action": {
+      "deposit": "Deposit to Passkey Wallet",
+      "withdraw": "Withdraw to Browser Wallet"
+    },
+    "working": {
+      "deposit": "Depositing…",
+      "withdraw": "Withdrawing…"
+    },
+    "success": {
+      "deposit": "Deposit completed.",
+      "withdraw": "Withdrawal completed."
+    },
+    "error": "The transfer could not be completed. {{error}}",
+    "viewTransaction": "View transaction"
   }
 }

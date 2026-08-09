@@ -49,6 +49,11 @@ const BridgePanel = lazy(() =>
     default: module.BridgePanel,
   })),
 );
+const PasskeyFundsModal = lazy(() =>
+  import("./WalletFeatures").then((module) => ({
+    default: module.PasskeyFundsModal,
+  })),
+);
 
 type BrowserEthereumProvider = EIP1193Provider;
 
@@ -314,6 +319,7 @@ export default function App() {
   const [browserProvider, setBrowserProvider] =
     useState<BrowserEthereumProvider | null>(null);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [passkeyFundsOpen, setPasskeyFundsOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [walletModalView, setWalletModalView] = useState<"choose" | "passkey" | "backup" | "recover">(
     "choose",
@@ -1540,6 +1546,21 @@ export default function App() {
                     </div>
                   </div>
 
+                  {activeWalletKind === "passkey" && passkeySession && (
+                    <button
+                      className="wallet-menu-passkey-action"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setWalletMenuOpen(false);
+                        setPasskeyFundsOpen(true);
+                      }}
+                    >
+                      {t("header.passkeyFundsAction")}
+                      <span aria-hidden="true">↕</span>
+                    </button>
+                  )}
+
                   <button
                     className="wallet-menu-passkey-action"
                     type="button"
@@ -2748,6 +2769,16 @@ export default function App() {
           onActivatePasskey={activatePasskeyWallet}
         />
       </Suspense>
+      {passkeySession && (
+        <Suspense fallback={null}>
+          <PasskeyFundsModal
+            open={passkeyFundsOpen}
+            session={passkeySession}
+            onClose={() => setPasskeyFundsOpen(false)}
+            onBalanceChanged={refreshWalletBalance}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

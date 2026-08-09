@@ -36,6 +36,7 @@
     "activePasskey": "Passkey",
     "passkeyActionCreate": "Passkey Walletを作成・復旧",
     "passkeyActionBackup": "Passkey Walletをバックアップ",
+    "passkeyFundsAction": "入金・出金",
     "copyWalletAddressAria": "接続中ウォレット {{address}} をコピー",
     "copyWalletAddress": "ウォレットアドレスをコピー",
     "walletAddressCopied": "ウォレットアドレスをコピーしました",
@@ -323,6 +324,11 @@
     "description": "入力内容に合わせて手数料を自動見積もりし、CCTP Forwarding Service経由で同じアドレスへ届けます。",
     "connectedWallet": "送信元・Arc受取先",
     "sameAddressHint": "同じEOAアドレスを両側で使用します",
+    "sourceBalance": "{{network}}のUSDC残高",
+    "sourceBalanceError": "残高を取得できませんでした。",
+    "refreshBalance": "送信元残高を更新",
+    "refreshBalanceAria": "送信元のUSDC残高を更新",
+    "insufficientBalance": "入力額がこのWalletのUSDC残高を超えています。",
     "source": "送信元ネットワーク",
     "amount": "USDC金額",
     "speed": "転送速度",
@@ -404,6 +410,12 @@
       "RECOVERY_ACCOUNT_MISMATCH": "このRecovery方式で登録したBrowser Walletまたはリカバリーフレーズを使用してください。",
       "RECOVERY_WALLET_REQUIRED": "Browser Walletをインストールまたは開いてから、ここで接続してください。",
       "RECOVERY_PHRASE_INVALID": "12語またはchecksumが正しくありません。",
+      "RECOVERY_MAPPING_LOOKUP_FAILED": "このRecovery signerに登録されたSmart AccountをCircleで検索できませんでした。",
+      "RECOVERY_ACCOUNT_BUILD_FAILED": "一時的なRecovery accountをCircleで構築できませんでした。",
+      "RECOVERY_PASSKEY_CREATE_FAILED": "新しいPasskeyを作成できませんでした。",
+      "RECOVERY_EXECUTION_FAILED": "Recovery user operationが送信前にCircleで拒否されました。Recovery mappingとGas Station policyを確認してください。",
+      "RECOVERY_RECEIPT_FAILED": "Recovery user operationは送信されましたが、Arc上のreceiptを確認できませんでした。",
+      "RECOVERED_WALLET_OPEN_FAILED": "Recoveryは完了しましたが、新しいPasskeyでWalletを開けませんでした。既存Passkeyの接続から開き直してください。",
       "SMART_ACCOUNT_NONCE_INVALID": "Smart Accountを初期化中です。少し待ってから再試行してください。",
       "SMART_ACCOUNT_INITIALIZING": "Smart Accountを初期化中です。少し待ってから再試行してください。",
       "RECOVERY_GAS_SPONSOR_FAILED": "Gas StationがRecovery処理をスポンサーできませんでした。Recovery policyを確認して再試行してください。",
@@ -470,7 +482,15 @@
       "phraseHint": "オフラインで保管した12語をこの処理中だけ使用します。",
       "phrasePlaceholder": "12語を空白区切りで入力",
       "phraseAction": "リカバリーフレーズで復旧する",
-      "working": "新しいPasskeyを登録中…"
+      "working": "新しいPasskeyを登録中…",
+      "progress": {
+        "mapping": "Recovery signerに登録されたSmart Accountを確認中…",
+        "account": "一時的なRecovery accountを準備中…",
+        "passkey": "この端末で新しいPasskeyを作成してください…",
+        "submitting": "Recovery処理をCircleへ送信中…",
+        "confirming": "Arc上のRecovery完了を確認中…",
+        "reopening": "新しいPasskeyで復旧したWalletを開いています…"
+      }
     },
     "recovered": {
       "title": "復旧完了",
@@ -485,5 +505,42 @@
       "description": "新しいPasskey Walletを作成するか、登録済みの復旧方法から元のWalletを復旧します。",
       "connectLink": "既存のWalletへ接続しますか？ Connect Walletを開く"
     }
+  },
+  "passkeyFunds": {
+    "eyebrow": "PASSKEY WALLET",
+    "title": "USDCを移動",
+    "tabsAria": "Passkey Walletへの入出金方向",
+    "tab": {
+      "deposit": "入金",
+      "withdraw": "出金"
+    },
+    "description": {
+      "deposit": "Browser Walletから、このPasskey WalletへArcのnative USDCを送ります。",
+      "withdraw": "このPasskey Walletから、接続したBrowser WalletへArcのnative USDCを送ります。"
+    },
+    "connectBrowser": "Browser Walletを接続",
+    "disconnect": "接続解除",
+    "browserMissing": "Browser Walletをインストールまたは開いてください。",
+    "browserBalance": "ArcのBrowser Wallet残高",
+    "passkeyBalance": "ArcのPasskey Wallet残高",
+    "reserveNote": "Browser Walletのガス用に0.01 USDCを残します。",
+    "balanceError": "Arc残高の一部またはすべてを取得できませんでした。",
+    "amount": "金額",
+    "max": "最大",
+    "insufficient": "入力額が利用可能残高を超えています。",
+    "action": {
+      "deposit": "Passkey Walletへ入金",
+      "withdraw": "Browser Walletへ出金"
+    },
+    "working": {
+      "deposit": "入金中…",
+      "withdraw": "出金中…"
+    },
+    "success": {
+      "deposit": "入金が完了しました。",
+      "withdraw": "出金が完了しました。"
+    },
+    "error": "送金を完了できませんでした。{{error}}",
+    "viewTransaction": "取引を見る"
   }
 }

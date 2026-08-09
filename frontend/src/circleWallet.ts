@@ -46,6 +46,7 @@ export type PasskeyWalletSession = {
     value: bigint;
   }) => Promise<CircleReceipt>;
   claim: (contractAddress: Address) => Promise<CircleReceipt>;
+  sendNative: (args: { to: Address; value: bigint }) => Promise<CircleReceipt>;
   registerRecovery: (recoveryAddress: Address) => Promise<CircleReceipt>;
 };
 
@@ -58,6 +59,26 @@ export type RecoveryResult = CircleReceipt & {
   walletAddress: Address;
   session: PasskeyWalletSession;
 };
+
+export type RecoveryProgressStage =
+  | "mapping"
+  | "account"
+  | "passkey"
+  | "submitting"
+  | "confirming"
+  | "reopening";
+
+type RecoveryFlowError = Error & { userOperationHash?: Hash };
+
+function recoveryFlowError(
+  code: string,
+  cause: unknown,
+  userOperationHash?: Hash,
+): RecoveryFlowError {
+  const error = new Error(code, { cause }) as RecoveryFlowError;
+  error.userOperationHash = userOperationHash;
+  return error;
+}
 
 export function passkeyCredentialToOwner(credential: {
   id: string;
@@ -154,6 +175,19 @@ async function buildPasskeySession(
               abi: arcTipJarAbi,
               functionName: "claim",
             }),
+          },
+        ],
+        paymaster: true,
+      });
+      return waitForReceipt(hash);
+    },
+    async sendNative({ to, value }) {
+      const hash = await bundler.sendUserOperation({
+        calls: [
+          {
+            to,
+            value,
+            data: "0x",
           },
         ],
         paymaster: true,
@@ -346,23 +380,34 @@ export function selectRecoveryWalletAddress(
 export async function recoverPasskeyWallet(
   recoveryOwner: LocalAccount,
   expectedWalletAddress?: Address,
+  onProgress?: (stage: RecoveryProgressStage) => void,
 ): Promise<RecoveryResult> {
   const runtime = await loadCircleRuntime();
-  const mappings = await runtime.modularClient.getAddressMapping({
-    owner: {
-      type: runtime.circle.OwnerIdentifierType.EOA,
-      identifier: { address: recoveryOwner.address },
-    },
-  });
+  onProgress?.("mapping");
+  const mappings = await runtime.modularClient
+    .getAddressMapping({
+      owner: {
+        type: runtime.circle.OwnerIdentifierType.EOA,
+        identifier: { address: recoveryOwner.address },
+      },
+    })
+    .catch((error) => {
+      throw recoveryFlowError("RECOVERY_MAPPING_LOOKUP_FAILED", error);
+    });
   const walletAddress = selectRecoveryWalletAddress(
     mappings,
     expectedWalletAddress,
   );
 
-  const temporarySmartAccount = await runtime.circle.toCircleSmartAccount({
-    client: runtime.modularClient,
-    owner: recoveryOwner,
-  });
+  onProgress?.("account");
+  const temporarySmartAccount = await runtime.circle
+    .toCircleSmartAccount({
+      client: runtime.modularClient,
+      owner: recoveryOwner,
+    })
+    .catch((error) => {
+      throw recoveryFlowError("RECOVERY_ACCOUNT_BUILD_FAILED", error);
+    });
   if (!isAddressEqual(temporarySmartAccount.address, walletAddress)) {
     throw new Error("RECOVERY_SMART_ACCOUNT_MISMATCH");
   }
@@ -389,27 +434,45 @@ export async function recoverPasskeyWallet(
   })) as Hex;
   if (code === "0x") throw new Error("RECOVERY_SMART_ACCOUNT_NOT_DEPLOYED");
 
-  const credential = await runtime.circle.toWebAuthnCredential({
-    transport: runtime.passkeyTransport,
-    mode: runtime.circle.WebAuthnMode.Register,
-    username: `arc-tip-jar-recovery-${crypto.randomUUID()}`,
-  });
+  onProgress?.("passkey");
+  const credential = await runtime.circle
+    .toWebAuthnCredential({
+      transport: runtime.passkeyTransport,
+      mode: runtime.circle.WebAuthnMode.Register,
+      username: `arc-tip-jar-recovery-${crypto.randomUUID()}`,
+    })
+    .catch((error) => {
+      throw recoveryFlowError("RECOVERY_PASSKEY_CREATE_FAILED", error);
+    });
   const recoveryBundler = createBundlerClient({
     account: temporarySmartAccount,
     chain: arcTestnet,
     transport: runtime.transport,
   }).extend(runtime.circle.recoveryActions);
-  const hash = await recoveryBundler.executeRecovery({
-    account: temporarySmartAccount,
-    credential,
-    paymaster: true,
-  });
-  const receipt = await recoveryBundler.waitForUserOperationReceipt({ hash });
+  onProgress?.("submitting");
+  const hash = await recoveryBundler
+    .executeRecovery({
+      account: temporarySmartAccount,
+      credential,
+      paymaster: true,
+    })
+    .catch((error) => {
+      throw recoveryFlowError("RECOVERY_EXECUTION_FAILED", error);
+    });
+  onProgress?.("confirming");
+  const receipt = await recoveryBundler
+    .waitForUserOperationReceipt({ hash })
+    .catch((error) => {
+      throw recoveryFlowError("RECOVERY_RECEIPT_FAILED", error, hash);
+    });
   const transactionHash = assertSuccessfulReceipt(receipt);
+  onProgress?.("reopening");
   const session = await buildPasskeySession(
     runtime,
     passkeyCredentialToOwner(credential),
-  );
+  ).catch((error) => {
+    throw recoveryFlowError("RECOVERED_WALLET_OPEN_FAILED", error, hash);
+  });
   if (!isAddressEqual(session.address, walletAddress)) {
     throw new Error("RECOVERED_WALLET_MISMATCH");
   }

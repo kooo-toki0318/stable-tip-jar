@@ -21,6 +21,7 @@ import {
   registerBrowserRecovery,
   verifyRecoveryMapping,
   type PasskeyWalletSession,
+  type RecoveryProgressStage,
 } from "./circleWallet";
 import {
   connectInjectedWallet,
@@ -103,9 +104,6 @@ function cleanError(error: unknown): string {
   }
   if (normalized.includes("155203")) return "SMART_ACCOUNT_NONCE_INVALID";
   if (normalized.includes("155505")) return "SMART_ACCOUNT_INITIALIZING";
-  if (normalized.includes("paymaster") || normalized.includes("sponsor")) {
-    return "RECOVERY_GAS_SPONSOR_FAILED";
-  }
   const safeCodes = new Set([
     "CIRCLE_CLIENT_KEY_MISSING",
     "PASSKEY_CREATED_WALLET_INIT_FAILED",
@@ -122,6 +120,12 @@ function cleanError(error: unknown): string {
     "RECOVERY_ACCOUNT_MISMATCH",
     "RECOVERY_WALLET_REQUIRED",
     "RECOVERY_PHRASE_INVALID",
+    "RECOVERY_MAPPING_LOOKUP_FAILED",
+    "RECOVERY_ACCOUNT_BUILD_FAILED",
+    "RECOVERY_PASSKEY_CREATE_FAILED",
+    "RECOVERY_EXECUTION_FAILED",
+    "RECOVERY_RECEIPT_FAILED",
+    "RECOVERED_WALLET_OPEN_FAILED",
   ]);
   for (const message of messages) {
     const firstLine = message.split("\n")[0].trim();
@@ -423,6 +427,10 @@ export default function WalletModal({
       error: t("walletModal.errors." + code, { defaultValue: code }),
     });
   }
+  function showRecoveryProgress(progressStage: RecoveryProgressStage) {
+    setStatus(t("walletModal.recover.progress." + progressStage));
+  }
+
   async function connectBrowser() {
     setWorking("browser-connect");
     setStatus(null);
@@ -619,6 +627,7 @@ export default function WalletModal({
       const result = await recoverPasskeyWallet(
         owner,
         registered?.walletAddress,
+        showRecoveryProgress,
       );
       if (
         registered &&
@@ -647,6 +656,7 @@ export default function WalletModal({
       const result = await recoverPasskeyWallet(
         owner,
         registered?.walletAddress,
+        showRecoveryProgress,
       );
       if (
         registered &&
