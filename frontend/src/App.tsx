@@ -48,8 +48,11 @@ import {
   type InjectedWallet,
 } from "./eip6963";
 import { appPageFromHash, type AppPage } from "./appPage";
+import type { ClaimLinkBootstrapResult } from "./claimLinks/bootstrap";
+import { guardClaimLinkHashNavigation } from "./claimLinks/navigationGuard";
 
 const WalletModal = lazy(() => import("./WalletModal"));
+const ClaimLinksPage = lazy(() => import("./claimLinks/ClaimLinksPage"));
 const BridgePanel = lazy(() =>
   import("./WalletFeatures").then((module) => ({
     default: module.BridgePanel,
@@ -343,13 +346,21 @@ function getErrorUiMessage(
   return { key: "status.error.generic" };
 }
 
-export default function App() {
+export default function App({
+  claimLinkBootstrap,
+}: {
+  claimLinkBootstrap: ClaimLinkBootstrapResult;
+}) {
   const { t, i18n } = useTranslation();
   const language = getSupportedLanguage(i18n.resolvedLanguage ?? i18n.language);
   const locale = language === "ja" ? "ja-JP" : "en-US";
   const [appPage, setAppPage] = useState<AppPage>(() =>
     appPageFromHash(window.location.hash),
   );
+  const initialClaimRouteHashRef = useRef(
+    appPage === "claim" ? window.location.hash : null,
+  );
+  const claimRouteNeedsBootstrapRef = useRef(appPage !== "claim");
   const [account, setAccount] = useState<Address | null>(null);
   const [activeWalletKind, setActiveWalletKind] = useState<
     "browser" | "passkey"
@@ -426,13 +437,45 @@ export default function App() {
   > | null>(null);
 
   useEffect(() => {
-    const syncPage = () => {
-      setAppPage(appPageFromHash(window.location.hash));
-      window.scrollTo({ top: 0, behavior: "auto" });
-    };
     if (!window.location.hash) {
       window.history.replaceState(null, "", "#/tip");
     }
+    let acceptedHash = window.location.hash;
+
+    const syncPage = () => {
+      const nextHash = window.location.hash;
+      if (
+        !guardClaimLinkHashNavigation({
+          acceptedHash,
+          nextHash,
+          restore: (hash) =>
+            window.history.replaceState(
+              window.history.state,
+              "",
+              `${window.location.pathname}${window.location.search}${hash}`,
+            ),
+        })
+      ) {
+        return;
+      }
+
+      const nextPage = appPageFromHash(nextHash);
+      acceptedHash = nextHash;
+      if (
+        nextPage === "claim" &&
+        (claimRouteNeedsBootstrapRef.current ||
+          initialClaimRouteHashRef.current !== nextHash)
+      ) {
+        window.location.reload();
+        return;
+      }
+      if (nextPage !== "claim" && initialClaimRouteHashRef.current !== null) {
+        claimRouteNeedsBootstrapRef.current = true;
+      }
+      setAppPage(nextPage);
+      window.scrollTo({ top: 0, behavior: "auto" });
+    };
+
     syncPage();
     window.addEventListener("hashchange", syncPage);
     return () => window.removeEventListener("hashchange", syncPage);
@@ -493,7 +536,12 @@ export default function App() {
     () => (isAddress(recipientInput) ? getAddress(recipientInput) : null),
     [recipientInput],
   );
-  const contractExplorerUrl = `${chain.blockExplorers?.default.url}/address/${contractAddress}`;
+  const visibleContractAddress =
+    (appPage === "links" || appPage === "claim") &&
+    selectedNetwork.claimLinkContractAddress
+      ? selectedNetwork.claimLinkContractAddress
+      : contractAddress;
+  const contractExplorerUrl = `${chain.blockExplorers?.default.url}/address/${visibleContractAddress}`;
   const messageBytes = useMemo(
     () => new TextEncoder().encode(message).length,
     [message],
@@ -1298,7 +1346,7 @@ export default function App() {
 
     if (
       !account ||
-      (activeWalletKind === "browser" && !window.ethereum) ||
+      (activeWalletKind === "browser" && !browserProvider) ||
       (activeWalletKind === "passkey" && !passkeySession)
     ) {
       setSendStatus({ key: "status.send.walletRequired" });
@@ -1351,11 +1399,11 @@ export default function App() {
         setSendUserOpHash(receipt.userOperationHash);
         setSendTxHash(receipt.transactionHash);
       } else {
-        if (!window.ethereum) throw new Error("WALLET_PROVIDER_MISSING");
+        if (!browserProvider) throw new Error("WALLET_PROVIDER_MISSING");
         const walletClient = createWalletClient({
           account,
           chain,
-          transport: custom(window.ethereum),
+          transport: custom(browserProvider),
         });
         const hash = await walletClient.writeContract({
           address: contractAddress,
@@ -1395,7 +1443,7 @@ export default function App() {
 
     if (
       !account ||
-      (activeWalletKind === "browser" && !window.ethereum) ||
+      (activeWalletKind === "browser" && !browserProvider) ||
       (activeWalletKind === "passkey" && !passkeySession)
     ) {
       setClaimStatus({ key: "status.claim.walletRequired" });
@@ -1424,11 +1472,11 @@ export default function App() {
         setClaimUserOpHash(receipt.userOperationHash);
         setClaimTxHash(receipt.transactionHash);
       } else {
-        if (!window.ethereum) throw new Error("WALLET_PROVIDER_MISSING");
+        if (!browserProvider) throw new Error("WALLET_PROVIDER_MISSING");
         const walletClient = createWalletClient({
           account,
           chain,
-          transport: custom(window.ethereum),
+          transport: custom(browserProvider),
         });
         const hash = await walletClient.writeContract({
           address: contractAddress,
@@ -1481,7 +1529,7 @@ export default function App() {
             className="primary-navigation"
             aria-label={t("navigation.primaryAria")}
           >
-            {(["tip", "bridge"] as const).map((page) => (
+            {(["tip", "links", "bridge"] as const).map((page) => (
               <a
                 key={page}
                 href={`#/${page}`}
@@ -2741,6 +2789,31 @@ export default function App() {
           </div>
         )}
 
+        {(appPage === "links" || appPage === "claim") && (
+          <Suspense
+            fallback={
+              <p className="feature-loading">{t("common.loading")}</p>
+            }
+          >
+            <ClaimLinksPage
+              mode={appPage === "claim" ? "claim" : "manage"}
+              account={account}
+              activeWalletKind={activeWalletKind}
+              passkeySession={passkeySession}
+              browserProvider={browserProvider}
+              network={selectedNetwork}
+              publicClient={publicClient}
+              claimLinkBootstrap={claimLinkBootstrap}
+              walletBalance={walletBalance}
+              isCorrectNetwork={isCorrectNetwork}
+              locale={locale}
+              onConnectWallet={(kind) => openWalletModal(kind)}
+              onSwitchNetwork={switchToSelectedNetwork}
+              onRefreshBalance={refreshWalletBalance}
+            />
+          </Suspense>
+        )}
+
         {appPage === "bridge" && (
           <section
             className="product-page bridge-page"
@@ -2835,7 +2908,7 @@ export default function App() {
               : t("footer.mainnetDescription")}
           </span>
           <a href={contractExplorerUrl} target="_blank" rel="noreferrer">
-            {shortAddress(contractAddress)} ↗
+            {shortAddress(visibleContractAddress)} ↗
           </a>
         </footer>
       </main>

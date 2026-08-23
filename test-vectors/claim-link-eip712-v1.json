@@ -1,0 +1,31 @@
+{
+  "description": "Public deterministic ClaimLinkEscrow V1 interoperability vector. Never use this private key for funds.",
+  "privateKey": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  "sender": "0x00000000000000000000000000000000000000b1",
+  "claimSigner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "recipient": "0x00000000000000000000000000000000000000a1",
+  "domain": {
+    "name": "ClaimLinkEscrow",
+    "version": "1",
+    "chainId": 5042002,
+    "verifyingContract": "0x00000000000000000000000000000000000000e1"
+  },
+  "types": {
+    "Claim": [
+      {
+        "name": "linkId",
+        "type": "bytes32"
+      },
+      {
+        "name": "recipient",
+        "type": "address"
+      }
+    ]
+  },
+  "message": {
+    "linkId": "0x53ec4d8588c7559cdf17b9dca112e19bccfe6fe1bd38fd898db60891afe73dd6",
+    "recipient": "0x00000000000000000000000000000000000000a1"
+  },
+  "digest": "0xbd0d7fd25e91c4c8d798c807d99a588ad1db15069d311c570ae94a0567196058",
+  "signature": "0x966370b095b08c36a37ffc1cab23646b5b57f7d4ae3da4b1f4dae68260beecb825ac7c1a6355d24f110d3d0d1e0b2242de09bef2bc4e7e6d4818160a31f9ca911c"
+}

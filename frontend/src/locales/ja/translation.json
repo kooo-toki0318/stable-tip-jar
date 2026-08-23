@@ -73,6 +73,7 @@
     "myJar": "マイJar",
     "primaryAria": "メインナビゲーション",
     "tip": "Tip Jar",
+    "links": "Claim Links",
     "bridge": "Bridge"
   },
   "jar": {
@@ -230,6 +231,12 @@
     "tip": {
       "documentTitle": "Stable Tip Jar · USDCでチップを送受信"
     },
+    "links": {
+      "documentTitle": "Claim Linkを作成 · Stable Tip Jar"
+    },
+    "claim": {
+      "documentTitle": "USDCを受け取る · Stable Tip Jar"
+    },
     "bridge": {
       "documentTitle": "USDCをArcへBridge · Stable Tip Jar",
       "eyebrow": "CCTP · ARC TESTNET",
@@ -245,6 +252,107 @@
       "connectDescription": "接続したBrowser WalletがBridgeの送信元になり、同じアドレスがArcの受取先になります。",
       "passkeyUnsupportedTitle": "BridgeにはBrowser Walletを接続してください。",
       "passkeyUnsupportedDescription": "Passkey Walletは現在Arc専用のため、Sepolia側の署名はできません。共通接続画面からBrowser Walletへ接続すると、そのEOAを送信元兼受取先として使用します。"
+    }
+  },
+  "claimLinks": {
+    "common": {
+      "eyebrow": "ネイティブUSDC · ARC TESTNET",
+      "amount": "金額",
+      "cashWarningTitle": "所持者が使えるリンク",
+      "cashWarning": "このリンクを知っている人は誰でも受け取れます。受取完了までは現金と同じように扱ってください。",
+      "expires": "有効期限",
+      "linkId": "Link ID",
+      "loading": "Claim Linkを読み込み中…",
+      "sender": "送信者",
+      "userOperation": "UserOperation {{hash}}",
+      "viewTransaction": "トランザクションを見る"
+    },
+    "wallet": {
+      "connectBrowser": "Browser Walletを接続",
+      "connectDescription": "このClaim Linkに使うウォレットを接続してください。",
+      "connectPasskey": "Passkey Walletを使う",
+      "connectedAs": "{{wallet}} · {{address}}",
+      "switchNetwork": "Arcへ切り替え",
+      "wrongNetwork": "アクティブなウォレットを選択中のArcネットワークへ切り替えてください。",
+      "kind": {
+        "browser": "Browser Wallet",
+        "passkey": "Passkey Wallet"
+      }
+    },
+    "paymentStatus": {
+      "active": "受取可能",
+      "claimed": "受取済み",
+      "expired": "期限切れ",
+      "refunded": "返金済み",
+      "unavailable": "利用不可"
+    },
+    "manage": {
+      "amountLabel": "ロックする金額",
+      "connectForHistory": "このウォレットが作成したリンクを見るには接続してください。",
+      "copyAgainButton": "リンクをもう一度コピー",
+      "copyButton": "Claim Linkをコピー",
+      "copyingButton": "コピー中…",
+      "createAnother": "別のリンクを作成",
+      "createButton": "入金してリンクを作成",
+      "createTitle": "Claim Linkを作成",
+      "creatingButton": "入金を確認中…",
+      "description": "ネイティブUSDCを1回限りのリンクにロックします。Browser WalletとPasskey Walletのどちらでも同じように作成・返金できます。",
+      "emptyHistory": "このウォレットが作成したClaim Linkはまだありません。",
+      "eyebrow": "リンクで受け取れる支払い",
+      "fixedExpiry": "1リンクにつき1回、全額を受け取れます。7日後に期限切れとなり、その後は送信者だけが返金できます。",
+      "historyCount": "合計 {{count}} 件",
+      "historyTitle": "このウォレットのリンク",
+      "leaveWarning": "入金を確認しました。今すぐリンクをコピーしてください。コピー前にこの画面を離れると秘密は復元できず、期限切れ後の返金まで資金を動かせません。",
+      "leaveConfirm": "このClaim Link画面を離れますか？入金済みの可能性があり、秘密は復元できません。",
+      "pendingLeaveWarning": "この処理でリンクへ入金される可能性が残っています。この画面を開いたまま状態確認を再試行してください。今離れると秘密を復元できなくなるおそれがあります。",
+      "showMore": "さらに{{count}}件を表示",
+      "readyToCopy": "入金を確認しました",
+      "refresh": "更新",
+      "refreshHistory": "Claim Link履歴を更新",
+      "refundButton": "期限切れリンクを返金",
+      "refundingButton": "返金中…",
+      "retryCreateButton": "同じ秘密で再試行",
+      "spendableBalance": "利用可能: {{amount}} USDC",
+      "title": "USDCをリンクで送る。"
+    },
+    "claim": {
+      "amountLabel": "受取可能額",
+      "browserGasNotice": "Browser Walletで受け取るには、ガス用として0.01 Arc USDC以上が必要です。Passkey WalletならGas Stationがスポンサーします。",
+      "claimButton": "このウォレットで受け取る",
+      "claiming": "受取中…",
+      "description": "この1回限りの支払いを受け取るウォレットを選びます。認可署名は端末内で作成され、そのウォレットにだけ紐づきます。",
+      "eyebrow": "1回限りの受取",
+      "title": "この支払いを受け取る。"
+    },
+    "status": {
+      "claimed": "支払いを受け取りました。",
+      "claiming": "認可へ署名し、受取を確認してください。",
+      "copied": "Claim Linkをコピーしました。信頼できる経路で共有してください。",
+      "created": "入金を確認しました。この画面を離れる前にリンクをコピーしてください。",
+      "creating": "ウォレットでリンクへの入金を確認してください。",
+      "refunded": "期限切れの支払いを返金しました。",
+      "refunding": "ウォレットで返金を確認してください。"
+    },
+    "errors": {
+      "copyFailed": "Claim Linkをコピーできませんでした。秘密はこのタブに残っています。再試行してください。",
+      "cryptoUnavailable": "このブラウザでは安全なClaim Link暗号処理を利用できません。",
+      "draftUnavailable": "このリンクの秘密はもう利用できません。以前のトランザクション状態が判明するまで新しいリンクへ入金しないでください。",
+      "generic": "Claim Linkの処理を完了できませんでした。",
+      "insufficientBalance": "このウォレットで利用可能なArc USDC残高を超えています。",
+      "invalidLink": "有効なClaim Linkではありません。",
+      "invalidPayment": "このIDに対応するClaim Linkの支払いはありません。",
+      "invalidSecret": "Claim Linkの秘密が不正です。",
+      "missingSecret": "このタブには秘密が残っていません。省略されていない元のリンクをもう一度開いてください。",
+      "noLongerClaimable": "この支払いはもう受け取れません。",
+      "notDeployed": "このネットワークにはClaim Linksがまだ設定されていません。",
+      "readFailed": "Claim Linkの現在状態を取得できませんでした。再試行してください。",
+      "receiptUncertain": "承認結果を確認できず、オンチェーン状態はまだ受取可能です。同じリンクで再試行してください。",
+      "signerMismatch": "リンクの秘密がオンチェーンの支払いと一致しません。",
+      "signingFailed": "受取ウォレットに紐づく認可署名を作成できませんでした。",
+      "transactionFailed": "Claim Linkのトランザクションに失敗しました。再試行を有効にする前にオンチェーン状態を確認しました。",
+      "unsafeUrl": "アドレスバーから秘密を安全に消せなかったため、秘密を破棄しました。",
+      "walletContextChanged": "アクティブなウォレットまたはネットワークが変わりました。再試行前に元のウォレット状態へ戻してください。",
+      "walletRejected": "ウォレットのリクエストが拒否されました。新しいトランザクションは送信されていません。"
     }
   },
   "footer": {

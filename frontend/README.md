@@ -19,6 +19,7 @@ cp .env.example .env.local
 
 ```dotenv
 VITE_ARC_TIP_JAR_ADDRESS=0xYOUR_CONTRACT_ADDRESS
+VITE_ARC_CLAIM_LINK_ADDRESS=0xYOUR_CLAIM_LINK_CONTRACT_ADDRESS
 VITE_CIRCLE_CLIENT_KEY=YOUR_PUBLIC_CIRCLE_CLIENT_KEY
 VITE_CIRCLE_CLIENT_URL=https://modular-sdk.circle.com/v1/rpc/w3s/buidl
 VITE_BRIDGE_ETHEREUM_SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
@@ -27,7 +28,7 @@ VITE_BRIDGE_ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
 VITE_BRIDGE_ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
 ```
 
-This value is public and will be included in the browser bundle.
+These values are public and will be included in the browser bundle.
 
 ## Cloudflare Pages
 
@@ -44,7 +45,8 @@ Build command: npm run build
 Build output directory: dist
 ```
 
-Set the four `VITE_BRIDGE_*_RPC_URL` variables in Cloudflare for Bridge.
+Set `VITE_ARC_CLAIM_LINK_ADDRESS` to the deployed escrow address and set the
+four `VITE_BRIDGE_*_RPC_URL` variables in Cloudflare for Bridge.
 All four are required and there is no fallback to App Kit's shared RPCs.
 The sample hosts are already included in `public/_headers`; update the CSP
 `connect-src` allowlist if you choose different hosts. Every `VITE_` value
@@ -63,7 +65,39 @@ The app lazy-loads `@circle-fin/modular-wallets-core`, `@circle-fin/app-kit`, an
 
 ### UI routes
 
-The top navigation contains `#/tip` and `#/bridge`. Hash routing keeps direct navigation compatible with Cloudflare Pages without a catch-all rewrite; the removed `#/wallet` route falls back to Tip Jar. Header, Tip, and Bridge connection actions open one shared modal with Browser Wallet connect, Passkey connect, Passkey creation, and recovery. Passkey creation advances directly to backup setup inside the same modal.
+The top navigation contains `#/tip`, `#/links`, and `#/bridge`. Complete bearer links use the unlisted `#/claim/v1/<linkId>` route. Hash routing keeps direct navigation compatible with Cloudflare Pages without a catch-all rewrite; the removed `#/wallet` route falls back to Tip Jar. All product pages share the Browser Wallet, Passkey Wallet, creation, backup, and recovery modal.
+
+### Claim Links
+
+Browser Wallets and Passkey Wallets expose the same domain operations: create a
+funded link, claim it to the active wallet, and refund it after its fixed
+seven-day expiry. Browser writes use only the EIP-6963 provider selected by the
+user and verify its current account and chain immediately before submission.
+Passkey writes are one-call UserOperations with `paymaster: true` and no
+user-paid fallback.
+
+A full link stores its ephemeral private key only in the fragment. Startup
+strictly parses it, moves it into a module closure, synchronously removes it
+with `history.replaceState`, reads the onchain payment, and verifies the
+derived signer before React, i18n, or wallet UI loads. If that bounded read is
+temporarily unavailable, the URL is already scrubbed and the same
+closure-held secret is retained for the claim screen to retry. No Claim Link
+secret is written to Storage, cookies, DOM, logs, error payloads, analytics,
+or backend state. Only the explicit post-funding Copy action reconstructs the
+URL.
+
+Current payment state and sender history use bounded `eth_call` reads through
+`/rpc`; history starts with the newest eight links and explicit pagination can
+reach every older sender index. Each page uses one latest-block snapshot, and
+claim/refund eligibility is decided from that block timestamp rather than the
+browser clock. The activity API and browser log scans are not extended.
+
+If a wallet submission or receipt wait is uncertain, the public transaction or
+UserOperation hash is retained and the same draft is checked onchain before an
+explicit retry. Confirmed-but-uncopied and uncertain creations warn before tab
+exit, internal hash navigation, or browser back navigation; the guard stores no
+link secret. If the secret is ultimately lost, the sender can still refund the
+public onchain payment after expiry.
 
 ### Recovery
 

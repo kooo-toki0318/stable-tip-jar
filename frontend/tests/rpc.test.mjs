@@ -83,7 +83,7 @@ test("RPC rejects oversized bodies before calling an upstream", async () => {
   }
 });
 
-test("RPC blocks log scans but permits receipt replacement checks", async () => {
+test("RPC blocks log scans but permits receipt and latest-block reads", async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async () => {
@@ -98,7 +98,11 @@ test("RPC blocks log scans but permits receipt replacement checks", async () => 
       request: rpcRequest("eth_getTransactionByHash"),
     });
     assert.equal(transactionResponse.status, 200);
-    assert.equal(calls, 1);
+    const blockResponse = await postRpc({
+      request: rpcRequest("eth_getBlockByNumber"),
+    });
+    assert.equal(blockResponse.status, 200);
+    assert.equal(calls, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }

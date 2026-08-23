@@ -21,6 +21,7 @@ import { validateMnemonic } from "@scure/bip39";
 import { generateMnemonic, mnemonicToAccount } from "viem/accounts";
 import { english } from "viem/accounts";
 import { arcTipJarAbi } from "./abi";
+import { claimLinkEscrowAbi } from "./claimLinks/contract";
 import { arcTestnet } from "./arc";
 
 const DEFAULT_CLIENT_URL = "https://modular-sdk.circle.com/v1/rpc/w3s/buidl";
@@ -35,6 +36,17 @@ export type CircleReceipt = {
   transactionHash: Hash;
 };
 
+export class PasskeyClaimLinkReceiptError extends Error {
+  readonly code = "CLAIM_LINK_USER_OPERATION_RECEIPT_UNCERTAIN";
+  readonly userOperationHash: Hash;
+
+  constructor(userOperationHash: Hash) {
+    super("The Claim Link user operation receipt is uncertain.");
+    this.name = "PasskeyClaimLinkReceiptError";
+    this.userOperationHash = userOperationHash;
+  }
+}
+
 export type PasskeyWalletSession = {
   kind: "passkey";
   address: Address;
@@ -46,9 +58,77 @@ export type PasskeyWalletSession = {
     value: bigint;
   }) => Promise<CircleReceipt>;
   claim: (contractAddress: Address) => Promise<CircleReceipt>;
+  createClaimLink: (args: {
+    contractAddress: Address;
+    claimSigner: Address;
+    value: bigint;
+  }) => Promise<CircleReceipt>;
+  claimLink: (args: {
+    contractAddress: Address;
+    linkId: Hex;
+    signature: Hex;
+  }) => Promise<CircleReceipt>;
+  refundClaimLink: (args: {
+    contractAddress: Address;
+    linkId: Hex;
+  }) => Promise<CircleReceipt>;
   sendNative: (args: { to: Address; value: bigint }) => Promise<CircleReceipt>;
   registerRecovery: (recoveryAddress: Address) => Promise<CircleReceipt>;
 };
+
+export function encodeCreateClaimLinkCall(args: {
+  contractAddress: Address;
+  claimSigner: Address;
+  value: bigint;
+}): { to: Address; value: bigint; data: Hex } {
+  return {
+    to: args.contractAddress,
+    value: args.value,
+    data: encodeFunctionData({
+      abi: claimLinkEscrowAbi,
+      functionName: "createClaimLink",
+      args: [args.claimSigner],
+    }),
+  };
+}
+
+export function encodeClaimLinkCall(args: {
+  contractAddress: Address;
+  linkId: Hex;
+  signature: Hex;
+}): { to: Address; data: Hex } {
+  return {
+    to: args.contractAddress,
+    data: encodeFunctionData({
+      abi: claimLinkEscrowAbi,
+      functionName: "claim",
+      args: [args.linkId, args.signature],
+    }),
+  };
+}
+
+export function encodeRefundClaimLinkCall(args: {
+  contractAddress: Address;
+  linkId: Hex;
+}): { to: Address; data: Hex } {
+  return {
+    to: args.contractAddress,
+    data: encodeFunctionData({
+      abi: claimLinkEscrowAbi,
+      functionName: "refund",
+      args: [args.linkId],
+    }),
+  };
+}
+
+export function buildSponsoredClaimLinkUserOperation<
+  TCall extends { to: Address; data: Hex; value?: bigint },
+>(call: TCall): { calls: [TCall]; paymaster: true } {
+  return {
+    calls: [call],
+    paymaster: true,
+  };
+}
 
 export type RecoveryRegistration = CircleReceipt & {
   walletAddress: Address;
@@ -61,12 +141,7 @@ export type RecoveryResult = CircleReceipt & {
 };
 
 export type RecoveryProgressStage =
-  | "mapping"
-  | "account"
-  | "passkey"
-  | "submitting"
-  | "confirming"
-  | "reopening";
+  "mapping" | "account" | "passkey" | "submitting" | "confirming" | "reopening";
 
 type RecoveryFlowError = Error & { userOperationHash?: Hash };
 
@@ -123,6 +198,25 @@ function assertSuccessfulReceipt(receipt: {
   return receipt.receipt.transactionHash;
 }
 
+export async function waitForClaimLinkUserOperationReceipt(args: {
+  userOperationHash: Hash;
+  waitForReceipt: () => Promise<{
+    success: boolean;
+    receipt: { transactionHash: Hash };
+  }>;
+}): Promise<CircleReceipt> {
+  let receipt: { success: boolean; receipt: { transactionHash: Hash } };
+  try {
+    receipt = await args.waitForReceipt();
+  } catch {
+    throw new PasskeyClaimLinkReceiptError(args.userOperationHash);
+  }
+  return {
+    userOperationHash: args.userOperationHash,
+    transactionHash: assertSuccessfulReceipt(receipt),
+  };
+}
+
 async function buildPasskeySession(
   runtime: CircleRuntime,
   owner: WebAuthnAccount,
@@ -144,6 +238,12 @@ async function buildPasskeySession(
       transactionHash: assertSuccessfulReceipt(receipt),
     };
   };
+
+  const waitForTrackedClaimLinkReceipt = (hash: Hash) =>
+    waitForClaimLinkUserOperationReceipt({
+      userOperationHash: hash,
+      waitForReceipt: () => bundler.waitForUserOperationReceipt({ hash }),
+    });
 
   return {
     kind: "passkey",
@@ -180,6 +280,24 @@ async function buildPasskeySession(
         paymaster: true,
       });
       return waitForReceipt(hash);
+    },
+    async createClaimLink(args) {
+      const hash = await bundler.sendUserOperation(
+        buildSponsoredClaimLinkUserOperation(encodeCreateClaimLinkCall(args)),
+      );
+      return waitForTrackedClaimLinkReceipt(hash);
+    },
+    async claimLink(args) {
+      const hash = await bundler.sendUserOperation(
+        buildSponsoredClaimLinkUserOperation(encodeClaimLinkCall(args)),
+      );
+      return waitForTrackedClaimLinkReceipt(hash);
+    },
+    async refundClaimLink(args) {
+      const hash = await bundler.sendUserOperation(
+        buildSponsoredClaimLinkUserOperation(encodeRefundClaimLinkCall(args)),
+      );
+      return waitForTrackedClaimLinkReceipt(hash);
     },
     async sendNative({ to, value }) {
       const hash = await bundler.sendUserOperation({

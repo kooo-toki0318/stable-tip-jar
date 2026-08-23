@@ -43,6 +43,10 @@ describe("EIP-6963 wallet sessions", () => {
   it("marks a recovery/source account request as isolated from Active Wallet events", async () => {
     vi.useFakeTimers();
     let resolveAccounts: ((accounts: string[]) => void) | undefined;
+    let markAccountsRequested: (() => void) | undefined;
+    const accountsRequested = new Promise<void>((resolve) => {
+      markAccountsRequested = resolve;
+    });
     const provider = {
       on: vi.fn(),
       removeListener: vi.fn(),
@@ -50,6 +54,7 @@ describe("EIP-6963 wallet sessions", () => {
         if (method === "eth_requestAccounts") {
           return new Promise<string[]>((resolve) => {
             resolveAccounts = resolve;
+            markAccountsRequested?.();
           });
         }
         return Promise.resolve("0x1");
@@ -63,6 +68,7 @@ describe("EIP-6963 wallet sessions", () => {
 
     const connection = connectInjectedWallet(wallet);
     expect(isIsolatedWalletRequestActive()).toBe(true);
+    await accountsRequested;
     resolveAccounts?.(["0x0000000000000000000000000000000000000001"]);
     await expect(connection).resolves.toMatchObject({ chainId: 1 });
     expect(isIsolatedWalletRequestActive()).toBe(true);

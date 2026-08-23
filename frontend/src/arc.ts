@@ -7,6 +7,7 @@ export type ArcNetworkConfig = {
   label: string;
   chain: Chain;
   contractAddress: Address;
+  claimLinkContractAddress: Address | null;
   browserRpcUrl: string;
   contractDeploymentBlock: bigint;
   faucetUrl?: string;
@@ -41,9 +42,17 @@ export const arcTestnet = defineChain({
   testnet: true,
 });
 
+function optionalAddress(value: string | undefined): Address | null {
+  const candidate = value?.trim();
+  return candidate ? getAddress(candidate) : null;
+}
+
 const testnetContractAddress = getAddress(
   import.meta.env.VITE_ARC_TIP_JAR_ADDRESS ??
     "0x44FD57BaeaAC3D2F0a20a8032840E00bd44E8668",
+);
+const testnetClaimLinkContractAddress = optionalAddress(
+  import.meta.env.VITE_ARC_CLAIM_LINK_ADDRESS,
 );
 
 export const arcTestnetConfig: ArcNetworkConfig = {
@@ -51,6 +60,7 @@ export const arcTestnetConfig: ArcNetworkConfig = {
   label: "Arc Testnet",
   chain: arcTestnet,
   contractAddress: testnetContractAddress,
+  claimLinkContractAddress: testnetClaimLinkContractAddress,
   browserRpcUrl: "/rpc",
   contractDeploymentBlock: 0x33e8c26n,
   faucetUrl: "https://faucet.circle.com",
@@ -63,7 +73,6 @@ const mainnetChainId = Number(import.meta.env.VITE_ARC_MAINNET_CHAIN_ID);
 const mainnetRpcUrl = import.meta.env.VITE_ARC_MAINNET_RPC_URL;
 const mainnetExplorerUrl = import.meta.env.VITE_ARC_MAINNET_EXPLORER_URL;
 const mainnetContractAddress = import.meta.env.VITE_ARC_MAINNET_TIP_JAR_ADDRESS;
-
 const arcMainnetConfig: ArcNetworkConfig | null =
   Number.isSafeInteger(mainnetChainId) &&
   mainnetChainId > 0 &&
@@ -83,6 +92,7 @@ const arcMainnetConfig: ArcNetworkConfig | null =
           },
         }),
         contractAddress: getAddress(mainnetContractAddress),
+        claimLinkContractAddress: null,
         browserRpcUrl: mainnetRpcUrl,
         contractDeploymentBlock: 0n,
       }
