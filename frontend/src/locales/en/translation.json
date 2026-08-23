@@ -361,7 +361,18 @@
     },
     "send": {
       "resetDraft": "Discard this unsubmitted draft",
-      "manageLinks": "Manage sent Claim Links"
+      "urlLabel": "Claim URL",
+      "recoveryWarning": "Save this link now. For security, Stable Tip Jar cannot recover it after you leave this page.",
+      "shareButton": "Copy share message",
+      "shareCopyingButton": "Copying message…",
+      "shareCopiedButton": "Share message copied",
+      "linkCopied": "Link copied to clipboard",
+      "shareCopied": "Share message copied to clipboard",
+      "bothCopied": "Link and share message copied",
+      "shareTemplate": "You received {{amount}} USDC 🎁\n\nClaim it here:\n{{url}}\n\nExpires: {{expires}}",
+      "createAnotherCompact": "Create another link",
+      "manageLinks": "Sent links & refunds",
+      "manageLinksHelp": "Check claim status and refund unclaimed links after they expire."
     }
   },
   "footer": {

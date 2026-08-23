@@ -7,6 +7,7 @@ export type ClaimLinkDraft = Readonly<{
   sender: Address;
   claimSigner: Address;
   linkId: Hex;
+  getLink: (baseUrl: string) => string;
   copyLink: (baseUrl: string, clipboard: ClaimLinkClipboard) => Promise<void>;
   discard: () => void;
 }>;
@@ -59,6 +60,16 @@ export async function createClaimLinkDraft(
     sender: normalizedSender,
     claimSigner,
     linkId,
+    getLink(baseUrl: string): string {
+      const activePrivateKey = privateKey;
+      if (!activePrivateKey) throw new ClaimLinkError("draft_unavailable");
+
+      try {
+        return completeClaimLink(baseUrl, linkId, activePrivateKey);
+      } catch {
+        throw new ClaimLinkError("invalid_base_url");
+      }
+    },
     async copyLink(
       baseUrl: string,
       clipboard: ClaimLinkClipboard,
