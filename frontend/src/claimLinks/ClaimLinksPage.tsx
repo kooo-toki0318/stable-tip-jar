@@ -28,6 +28,7 @@ import {
   ClaimLinkPaymentStatus,
   isClaimLinkExpired,
   isFundedDraftPayment,
+  readClaimLinkMessage,
   readClaimLinkPayment,
   readSenderClaimLinks,
   type ClaimLinkPayment,
@@ -272,6 +273,7 @@ export default function ClaimLinksPage(props: ClaimLinksPageProps) {
   >(null);
 
   const [claimPayment, setClaimPayment] = useState<ClaimLinkPayment | null>(null);
+  const [claimPublicMessage, setClaimPublicMessage] = useState("");
   const [isLoadingClaim, setIsLoadingClaim] = useState(false);
   const [claimReadRetry, setClaimReadRetry] = useState(0);
   const [canRetryClaimRead, setCanRetryClaimRead] = useState(false);
@@ -521,6 +523,7 @@ export default function ClaimLinksPage(props: ClaimLinksPageProps) {
   useEffect(() => {
     if (mode !== "claim") return;
     setClaimPayment(null);
+    setClaimPublicMessage("");
     setIsClaimCapabilityReady(false);
     setCanRetryClaimRead(false);
     setClaimReceipt(null);
@@ -558,6 +561,14 @@ export default function ClaimLinksPage(props: ClaimLinksPageProps) {
       .then(async (payment) => {
         if (claimLoadSequenceRef.current !== sequence) return;
         setClaimPayment(payment);
+        const publicMessage = await readClaimLinkMessage({
+          publicClient,
+          contractAddress,
+          linkId: payment.linkId,
+          blockNumber: payment.observedBlockNumber,
+        });
+        if (claimLoadSequenceRef.current !== sequence) return;
+        setClaimPublicMessage(publicMessage);
         if (claimLinkBootstrap.status !== "ready") return;
 
         const validation = validateClaimLinkPayment(claimLinkBootstrap, payment);
@@ -1125,6 +1136,12 @@ export default function ClaimLinksPage(props: ClaimLinksPageProps) {
                   {t(paymentStatusKey(claimPayment))}
                 </span>
               </div>
+              {claimPublicMessage && (
+                <div className="claim-link-public-message">
+                  <span>{t("send.messageLabel")}</span>
+                  <p>{claimPublicMessage}</p>
+                </div>
+              )}
               <dl className="claim-link-details">
                 <div>
                   <dt>{t("claimLinks.common.sender")}</dt>
@@ -1229,7 +1246,11 @@ export default function ClaimLinksPage(props: ClaimLinksPageProps) {
       </div>
 
       <div className="claim-link-grid">
-        <article className="claim-link-card" aria-labelledby="claim-link-create-title">
+        <article
+          className="claim-link-card"
+          aria-labelledby="claim-link-create-title"
+          hidden
+        >
           <h2 id="claim-link-create-title">{t("claimLinks.manage.createTitle")}</h2>
           <p>{t("claimLinks.manage.fixedExpiry")}</p>
           <WalletGate {...props} />

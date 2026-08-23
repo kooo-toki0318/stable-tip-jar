@@ -146,7 +146,12 @@
       "selected": "送り先を {{address}} に設定しました。",
       "hint": "金額とメッセージを確認してから送信してください。"
     },
-    "rangeMaximumSponsored": "100% · ガススポンサー"
+    "rangeMaximumSponsored": "100% · ガススポンサー",
+    "modeLabel": "送り方",
+    "modeWallet": "ウォレットへ送る",
+    "modeLink": "受取リンクを作る",
+    "modeWalletDescription": "送り先ウォレットアドレスへ直接送ります。",
+    "modeLinkDescription": "送り先アドレスは不要です。金額とメッセージを入れて、7日間有効の受取リンクを作ります。"
   },
   "sentHistory": {
     "title": "送信履歴",
@@ -296,9 +301,9 @@
       "createButton": "入金してリンクを作成",
       "createTitle": "Claim Linkを作成",
       "creatingButton": "入金を確認中…",
-      "description": "ネイティブUSDCを1回限りのリンクにロックします。Browser WalletとPasskey Walletのどちらでも同じように作成・返金できます。",
+      "description": "作成済みリンクの状態を確認し、有効期限後の未受取分を返金できます。新しいClaim LinkはTip Jarの「送る」から作成します。",
       "emptyHistory": "このウォレットが作成したClaim Linkはまだありません。",
-      "eyebrow": "リンクで受け取れる支払い",
+      "eyebrow": "履歴・返金",
       "fixedExpiry": "1リンクにつき1回、全額を受け取れます。7日後に期限切れとなり、その後は送信者だけが返金できます。",
       "historyCount": "合計 {{count}} 件",
       "historyTitle": "このウォレットのリンク",
@@ -313,7 +318,7 @@
       "refundingButton": "返金中…",
       "retryCreateButton": "同じ秘密で再試行",
       "spendableBalance": "利用可能: {{amount}} USDC",
-      "title": "USDCをリンクで送る。"
+      "title": "送信したClaim Links"
     },
     "claim": {
       "amountLabel": "受取可能額",
@@ -353,6 +358,10 @@
       "unsafeUrl": "アドレスバーから秘密を安全に消せなかったため、秘密を破棄しました。",
       "walletContextChanged": "アクティブなウォレットまたはネットワークが変わりました。再試行前に元のウォレット状態へ戻してください。",
       "walletRejected": "ウォレットのリクエストが拒否されました。新しいトランザクションは送信されていません。"
+    },
+    "send": {
+      "resetDraft": "この未送信ドラフトを破棄",
+      "manageLinks": "送信したClaim Linksを管理"
     }
   },
   "footer": {

@@ -118,8 +118,9 @@ It includes:
 - Recipient address validation
 - Wallet-balance-aware amount selection
 - Recipient totals, recent tips, and claim history
-- Separate `#/links` management and unlisted `#/claim/v1/<linkId>`
-  redemption surfaces
+- Claim Link creation integrated into the existing Send panel, with
+  auxiliary `#/links` history/refund management and an unlisted
+  `#/claim/v1/<linkId>` redemption surface
 - A same-origin Cloudflare Pages RPC proxy to avoid browser CORS issues and
   reduce direct RPC request bursts
 - Responsive layouts for desktop and mobile
@@ -135,7 +136,7 @@ The frontend also supports Circle Modular Wallets on Arc Testnet:
 - CCTP Bridge from Ethereum, Base, and Arbitrum Sepolia to the active Arc address
 - Circle Forwarding Service for destination minting without an Arc-side wallet switch
 
-The listed interface uses `#/tip`, `#/links`, and `#/bridge`; complete bearer links open the unlisted `#/claim/v1/<linkId>` route. Wallet connection, Passkey creation, backup setup, and recovery share one modal across the product pages.
+The primary interface uses `#/tip` and `#/bridge`. Claim Link creation lives inside Send; `#/links` is an auxiliary history/refund view, and complete bearer links open the unlisted `#/claim/v1/<linkId>` route. Wallet connection, Passkey creation, backup setup, and recovery share one modal across the product pages.
 
 Recovery adds a new Passkey owner; it does not remove a lost old Passkey. Recovery provider requests remain isolated from the wallet currently driving the Tip Jar dashboard. Browser Wallet Recovery opens the default injected wallet directly and still requires the documented MetaMask/Rabby production smoke test. The current Bridge flow is intentionally single-wallet: the connected Browser Wallet EOA is both the Sepolia source and the Arc recipient. Passkey Wallet sessions are Arc-only and must switch to a Browser Wallet before bridging.
 

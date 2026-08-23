@@ -31,6 +31,7 @@ export type ClaimLinkWalletAdapter = Readonly<{
     contractAddress: Address;
     claimSigner: Address;
     value: bigint;
+    message?: string;
   }) => Promise<ClaimLinkOperationReceipt>;
   claim: (args: {
     contractAddress: Address;
@@ -181,7 +182,11 @@ export function createBrowserClaimLinkWalletAdapter(args: {
   async function write(request: {
     contractAddress: Address;
     functionName: "createClaimLink" | "claim" | "refund";
-    functionArgs: readonly [Address] | readonly [Hex, Hex] | readonly [Hex];
+    functionArgs:
+      | readonly [Address]
+      | readonly [Address, string]
+      | readonly [Hex, Hex]
+      | readonly [Hex];
     value?: bigint;
   }): Promise<ClaimLinkOperationReceipt> {
     await assertBrowserContext(context);
@@ -193,12 +198,24 @@ export function createBrowserClaimLinkWalletAdapter(args: {
         account: address,
       } as const;
       if (request.functionName === "createClaimLink") {
-        hash = await walletClient.writeContract({
-          ...baseRequest,
-          functionName: "createClaimLink",
-          args: request.functionArgs as readonly [Address],
-          value: request.value,
-        });
+        const createArgs = request.functionArgs as
+          | readonly [Address]
+          | readonly [Address, string];
+        if (createArgs.length === 2) {
+          hash = await walletClient.writeContract({
+            ...baseRequest,
+            functionName: "createClaimLink",
+            args: [createArgs[0], createArgs[1]],
+            value: request.value,
+          });
+        } else {
+          hash = await walletClient.writeContract({
+            ...baseRequest,
+            functionName: "createClaimLink",
+            args: [createArgs[0]],
+            value: request.value,
+          });
+        }
       } else if (request.functionName === "claim") {
         hash = await walletClient.writeContract({
           ...baseRequest,
@@ -227,11 +244,14 @@ export function createBrowserClaimLinkWalletAdapter(args: {
     address,
     chainId: args.chain.id,
     sessionKey: `browser:${args.chain.id}:${address}`,
-    create: ({ contractAddress, claimSigner, value }) =>
+    create: ({ contractAddress, claimSigner, value, message }) =>
       write({
         contractAddress,
         functionName: "createClaimLink",
-        functionArgs: [claimSigner],
+        functionArgs:
+          message === undefined
+            ? [claimSigner]
+            : [claimSigner, message],
         value,
       }),
     claim: ({ contractAddress, linkId, signature }) =>
@@ -289,12 +309,13 @@ export function createPasskeyClaimLinkWalletAdapter(args: {
     address,
     chainId: args.chain.id,
     sessionKey: `passkey:${args.chain.id}:${address}`,
-    create: ({ contractAddress, claimSigner, value }) =>
+    create: ({ contractAddress, claimSigner, value, message }) =>
       run(() =>
         args.session.createClaimLink({
           contractAddress,
           claimSigner,
           value,
+          ...(message === undefined ? {} : { message }),
         }),
       ),
     claim: ({ contractAddress, linkId, signature }) =>

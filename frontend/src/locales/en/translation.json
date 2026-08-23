@@ -146,7 +146,12 @@
       "selected": "Recipient set to {{address}}.",
       "hint": "Review the amount and message, then send when you’re ready."
     },
-    "rangeMaximumSponsored": "100% · gas sponsored"
+    "rangeMaximumSponsored": "100% · gas sponsored",
+    "modeLabel": "Send method",
+    "modeWallet": "Send to wallet",
+    "modeLink": "Create claim link",
+    "modeWalletDescription": "Send directly to a recipient wallet address.",
+    "modeLinkDescription": "No recipient address needed. Add an amount and message, then create a claim link valid for 7 days."
   },
   "sentHistory": {
     "title": "Sent tip history",
@@ -296,9 +301,9 @@
       "createButton": "Create funded link",
       "createTitle": "Create a Claim Link",
       "creatingButton": "Confirming funding…",
-      "description": "Lock native USDC in one single-use link. Browser Wallet and Passkey Wallet have the same create and refund controls.",
+      "description": "Review created links and refund unclaimed funds after expiry. Create new Claim Links from Send on the Tip Jar page.",
       "emptyHistory": "This wallet has not created a Claim Link yet.",
-      "eyebrow": "CLAIMABLE PAYMENTS",
+      "eyebrow": "HISTORY & REFUNDS",
       "fixedExpiry": "One payment, one claim. Every link expires after 7 days; only then can its sender refund it.",
       "historyCount": "{{count}} total",
       "historyTitle": "Links from this wallet",
@@ -313,7 +318,7 @@
       "refundingButton": "Refunding…",
       "retryCreateButton": "Retry with the same secret",
       "spendableBalance": "Spendable: {{amount}} USDC",
-      "title": "Send USDC with a link."
+      "title": "Sent Claim Links"
     },
     "claim": {
       "amountLabel": "Available to claim",
@@ -353,6 +358,10 @@
       "unsafeUrl": "The secret could not be removed safely from the address bar, so it was discarded.",
       "walletContextChanged": "The active wallet or network changed. Return to the original wallet context before retrying.",
       "walletRejected": "The wallet request was rejected. No new transaction was submitted."
+    },
+    "send": {
+      "resetDraft": "Discard this unsubmitted draft",
+      "manageLinks": "Manage sent Claim Links"
     }
   },
   "footer": {
