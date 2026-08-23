@@ -18,29 +18,19 @@ contract ClaimLinkEscrowMessageTest is Test {
 
     function testCreateWithMessageStoresPublicMessage() public {
         vm.prank(sender);
-        bytes32 linkId = escrow.createClaimLink{value: 1 ether}(
-            claimSigner,
-            "Thanks for helping with the project!"
-        );
+        bytes32 linkId = escrow.createClaimLink{value: 1 ether}(claimSigner, "Thanks for helping with the project!");
 
-        assertEq(
-            escrow.getMessage(linkId),
-            "Thanks for helping with the project!"
-        );
+        assertEq(escrow.getMessage(linkId), "Thanks for helping with the project!");
         ClaimLinkEscrow.Payment memory payment = escrow.getPayment(linkId);
         assertEq(payment.sender, sender);
         assertEq(payment.claimSigner, claimSigner);
         assertEq(payment.amount, 1 ether);
-        assertEq(
-            uint256(payment.status),
-            uint256(ClaimLinkEscrow.PaymentStatus.Active)
-        );
+        assertEq(uint256(payment.status), uint256(ClaimLinkEscrow.PaymentStatus.Active));
     }
 
     function testLegacyCreateStillStoresEmptyMessage() public {
         vm.prank(sender);
-        bytes32 linkId =
-            escrow.createClaimLink{value: 1 ether}(claimSigner);
+        bytes32 linkId = escrow.createClaimLink{value: 1 ether}(claimSigner);
 
         assertEq(escrow.getMessage(linkId), "");
     }
@@ -49,8 +39,7 @@ contract ClaimLinkEscrowMessageTest is Test {
         string memory message = string(new bytes(280));
 
         vm.prank(sender);
-        bytes32 linkId =
-            escrow.createClaimLink{value: 1 ether}(claimSigner, message);
+        bytes32 linkId = escrow.createClaimLink{value: 1 ether}(claimSigner, message);
 
         assertEq(bytes(escrow.getMessage(linkId)).length, 280);
     }
@@ -59,12 +48,7 @@ contract ClaimLinkEscrowMessageTest is Test {
         string memory message = string(new bytes(281));
 
         vm.prank(sender);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ClaimLinkEscrow.MessageTooLong.selector,
-                281
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(ClaimLinkEscrow.MessageTooLong.selector, 281));
         escrow.createClaimLink{value: 1 ether}(claimSigner, message);
     }
 }
