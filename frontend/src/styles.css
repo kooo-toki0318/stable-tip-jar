@@ -5084,3 +5084,72 @@ select:focus-visible {
   grid-column: 1 / -1;
 }
 
+
+
+/* Claim Link share/result polish */
+.claim-link-save-warning {
+  font-weight: 600;
+}
+
+.claim-link-url-block {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.claim-link-url-block label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.claim-link-url-input {
+  width: 100%;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.claim-link-copy-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.claim-link-copy-confirmation {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.claim-link-create-another {
+  width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.claim-link-create-another:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.claim-link-manage-footer {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.claim-link-manage-footer p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 640px) {
+  .claim-link-copy-actions {
+    grid-template-columns: 1fr;
+  }
+}

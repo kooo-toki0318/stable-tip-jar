@@ -184,7 +184,9 @@ export default function ClaimLinkSendPanel({
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
+  const [isCopyingShare, setIsCopyingShare] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [fundedDraft, setFundedDraft] = useState<FundedDraft | null>(null);
   const [createOperationReference, setCreateOperationReference] =
     useState<PublicOperationReference | null>(null);
@@ -262,8 +264,9 @@ export default function ClaimLinkSendPanel({
     walletBalance !== null &&
     parsedAmount > spendableBalance;
 
+  const linkSaved = linkCopied || shareCopied;
   const hasUnsafeCreateSecret =
-    !linkCopied &&
+    !linkSaved &&
     Boolean(draftRef.current || fundedDraft || createOperationReference);
 
   const inputLocked = isCreating || hasUnsafeCreateSecret;
@@ -497,6 +500,9 @@ export default function ClaimLinkSendPanel({
     }
   };
 
+  const claimLinkBaseUrl = () =>
+    `${window.location.origin}${window.location.pathname}`;
+
   const copyFundedLink = async () => {
     const pending = draftRef.current;
     if (!pending || !fundedDraft) return;
@@ -504,12 +510,11 @@ export default function ClaimLinkSendPanel({
     setIsCopying(true);
     try {
       if (!navigator.clipboard) throw new ClaimLinkError("copy_failed");
-      await pending.draft.copyLink(
-        `${window.location.origin}${window.location.pathname}`,
-        navigator.clipboard,
+      await navigator.clipboard.writeText(
+        pending.draft.getLink(claimLinkBaseUrl()),
       );
       setLinkCopied(true);
-      setStatus({ key: "claimLinks.status.copied", kind: "success" });
+      setStatus(null);
     } catch (error) {
       setStatus(publicErrorMessage(error));
     } finally {
@@ -517,13 +522,37 @@ export default function ClaimLinkSendPanel({
     }
   };
 
+  const copyShareMessage = async () => {
+    const pending = draftRef.current;
+    if (!pending || !fundedDraft) return;
+
+    setIsCopyingShare(true);
+    try {
+      if (!navigator.clipboard) throw new ClaimLinkError("copy_failed");
+      const claimLink = pending.draft.getLink(claimLinkBaseUrl());
+      const shareMessage = t("claimLinks.send.shareTemplate", {
+        amount: formatUsdc(fundedDraft.amount, locale),
+        expires: formatEpochSeconds(fundedDraft.expiresAt, locale),
+        url: claimLink,
+      });
+      await navigator.clipboard.writeText(shareMessage);
+      setShareCopied(true);
+      setStatus(null);
+    } catch (error) {
+      setStatus(publicErrorMessage(error));
+    } finally {
+      setIsCopyingShare(false);
+    }
+  };
+
   const startAnotherLink = () => {
-    if (!linkCopied) return;
+    if (!linkSaved) return;
     draftRef.current?.draft.discard();
     draftRef.current = null;
     setFundedDraft(null);
     setCreateOperationReference(null);
     setLinkCopied(false);
+    setShareCopied(false);
     setStatus(null);
   };
 
@@ -575,6 +604,15 @@ export default function ClaimLinkSendPanel({
     messageBytes <= CLAIM_LINK_MAX_MESSAGE_BYTES &&
     !isCreating &&
     !fundedDraft;
+
+  let claimLinkUrl = "";
+  if (fundedDraft && draftRef.current) {
+    try {
+      claimLinkUrl = draftRef.current.draft.getLink(claimLinkBaseUrl());
+    } catch {
+      claimLinkUrl = "";
+    }
+  }
 
   return (
     <div className="claim-link-inline-panel">
@@ -630,7 +668,25 @@ export default function ClaimLinkSendPanel({
       ) : (
         <div className="claim-link-funded-result">
           <strong>{t("claimLinks.manage.readyToCopy")}</strong>
-          <p>{t("claimLinks.manage.leaveWarning")}</p>
+          <p className="claim-link-save-warning">
+            {t("claimLinks.send.recoveryWarning")}
+          </p>
+
+          {claimLinkUrl && (
+            <div className="claim-link-url-block">
+              <label htmlFor="claim-link-url">
+                {t("claimLinks.send.urlLabel")}
+              </label>
+              <input
+                id="claim-link-url"
+                className="claim-link-url-input"
+                type="text"
+                readOnly
+                value={claimLinkUrl}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+            </div>
+          )}
 
           <dl className="claim-link-details">
             <div>
@@ -650,28 +706,62 @@ export default function ClaimLinkSendPanel({
             </div>
           )}
 
-          <button
-            className="primary-button"
-            type="button"
-            disabled={isCopying}
-            onClick={() => void copyFundedLink()}
-          >
-            {t(
-              isCopying
-                ? "claimLinks.manage.copyingButton"
-                : linkCopied
-                  ? "claimLinks.manage.copyAgainButton"
-                  : "claimLinks.manage.copyButton",
-            )}
-          </button>
+          <div className="claim-link-copy-actions">
+            <button
+              className="primary-button"
+              type="button"
+              disabled={isCopying}
+              onClick={() => void copyFundedLink()}
+            >
+              {t(
+                isCopying
+                  ? "claimLinks.manage.copyingButton"
+                  : linkCopied
+                    ? "claimLinks.manage.copyAgainButton"
+                    : "claimLinks.manage.copyButton",
+              )}
+            </button>
+
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={isCopyingShare}
+              onClick={() => void copyShareMessage()}
+            >
+              {t(
+                isCopyingShare
+                  ? "claimLinks.send.shareCopyingButton"
+                  : shareCopied
+                    ? "claimLinks.send.shareCopiedButton"
+                    : "claimLinks.send.shareButton",
+              )}
+            </button>
+          </div>
+
+          {linkSaved && (
+            <p
+              className="claim-link-copy-confirmation"
+              role="status"
+              aria-live="polite"
+            >
+              ✓{" "}
+              {t(
+                linkCopied && shareCopied
+                  ? "claimLinks.send.bothCopied"
+                  : shareCopied
+                    ? "claimLinks.send.shareCopied"
+                    : "claimLinks.send.linkCopied",
+              )}
+            </p>
+          )}
 
           <button
-            className="secondary-button"
+            className="claim-link-create-another"
             type="button"
-            disabled={!linkCopied}
+            disabled={!linkSaved}
             onClick={startAnotherLink}
           >
-            {t("claimLinks.manage.createAnother")}
+            + {t("claimLinks.send.createAnotherCompact")}
           </button>
         </div>
       )}
@@ -707,9 +797,12 @@ export default function ClaimLinkSendPanel({
         </p>
       )}
 
-      <a className="claim-link-manage-link" href="#/links">
-        {t("claimLinks.send.manageLinks")} →
-      </a>
+      <div className="claim-link-manage-footer">
+        <a className="claim-link-manage-link" href="#/links">
+          {t("claimLinks.send.manageLinks")} →
+        </a>
+        <p>{t("claimLinks.send.manageLinksHelp")}</p>
+      </div>
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { createClaimLinkDraft } from "./create";
 const SENDER = "0x00000000000000000000000000000000000000b1" as Address;
 
 describe("claim link creation capability", () => {
-  it("derives public fields but exposes the complete link only to explicit copy", async () => {
+  it("derives public fields and exposes the complete link only on explicit in-memory access", async () => {
     const clipboard = { writeText: vi.fn(async (_value: string) => undefined) };
     const draft = await createClaimLinkDraft(SENDER);
 
@@ -21,10 +21,20 @@ describe("claim link creation capability", () => {
       "claimSigner",
       "copyLink",
       "discard",
+      "getLink",
       "linkId",
       "sender",
     ]);
     expect(JSON.stringify(draft)).not.toContain("?k=");
+
+    const displayed = draft.getLink(
+      "https://example.com/app/?tracking=public#/tip",
+    );
+    const displayedUrl = new URL(displayed);
+    expect(displayedUrl.search).toBe("");
+    expect(displayedUrl.hash).toMatch(
+      new RegExp(`^#/claim/v1/${draft.linkId}\\?k=0x[0-9a-f]{64}$`),
+    );
 
     const expectedLinkId = keccak256(
       encodeAbiParameters(
@@ -73,6 +83,7 @@ describe("claim link creation capability", () => {
     expect(JSON.stringify(copyError)).not.toContain(copiedSecret);
 
     draft.discard();
+    expect(() => draft.getLink("https://example.com/")).toThrow();
     await expect(
       draft.copyLink("https://example.com/", { writeText: vi.fn() }),
     ).rejects.toMatchObject({ code: "draft_unavailable" });

@@ -361,7 +361,18 @@
     },
     "send": {
       "resetDraft": "この未送信ドラフトを破棄",
-      "manageLinks": "送信したClaim Linksを管理"
+      "urlLabel": "受取URL",
+      "recoveryWarning": "このリンクは今保存してください。セキュリティ上、この画面を離れた後にStable Tip Jarから復元することはできません。",
+      "shareButton": "共有文をコピー",
+      "shareCopyingButton": "共有文をコピー中…",
+      "shareCopiedButton": "共有文をコピー済み",
+      "linkCopied": "リンクをクリップボードにコピーしました",
+      "shareCopied": "共有文をクリップボードにコピーしました",
+      "bothCopied": "リンクと共有文をコピーしました",
+      "shareTemplate": "{{amount}} USDCを受け取れます 🎁\n\nこちらから受け取ってください:\n{{url}}\n\n有効期限: {{expires}}",
+      "createAnotherCompact": "別のリンクを作る",
+      "manageLinks": "送信したリンク・返金",
+      "manageLinksHelp": "受取状況の確認と、期限切れ後の未受取リンクの返金ができます。"
     }
   },
   "footer": {

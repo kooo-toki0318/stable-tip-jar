@@ -29,8 +29,12 @@ describe("embedded Claim Link sender security boundaries", () => {
     expect(source).toContain("storedMessage === pending.message");
   });
 
-  it("only copies the complete bearer link from an explicit handler", () => {
+  it("shows and copies the bearer URL from the in-memory draft without persistent storage", () => {
+    expect(source).toContain("draft.getLink");
+    expect(source).toContain('id="claim-link-url"');
     expect(source).toContain("const copyFundedLink = async () =>");
+    expect(source).toContain("const copyShareMessage = async () =>");
     expect(source).toContain("navigator.clipboard");
+    expect(source).not.toMatch(/(?:localStorage|sessionStorage|indexedDB)/);
   });
 });
