@@ -62,6 +62,7 @@ export type PasskeyWalletSession = {
     contractAddress: Address;
     claimSigner: Address;
     value: bigint;
+    message?: string;
   }) => Promise<CircleReceipt>;
   claimLink: (args: {
     contractAddress: Address;
@@ -80,15 +81,25 @@ export function encodeCreateClaimLinkCall(args: {
   contractAddress: Address;
   claimSigner: Address;
   value: bigint;
+  message?: string;
 }): { to: Address; value: bigint; data: Hex } {
+  const data =
+    args.message === undefined
+      ? encodeFunctionData({
+          abi: claimLinkEscrowAbi,
+          functionName: "createClaimLink",
+          args: [args.claimSigner],
+        })
+      : encodeFunctionData({
+          abi: claimLinkEscrowAbi,
+          functionName: "createClaimLink",
+          args: [args.claimSigner, args.message],
+        });
+
   return {
     to: args.contractAddress,
     value: args.value,
-    data: encodeFunctionData({
-      abi: claimLinkEscrowAbi,
-      functionName: "createClaimLink",
-      args: [args.claimSigner],
-    }),
+    data,
   };
 }
 

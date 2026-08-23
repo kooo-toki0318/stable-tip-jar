@@ -53,6 +53,9 @@ import { guardClaimLinkHashNavigation } from "./claimLinks/navigationGuard";
 
 const WalletModal = lazy(() => import("./WalletModal"));
 const ClaimLinksPage = lazy(() => import("./claimLinks/ClaimLinksPage"));
+const ClaimLinkSendPanel = lazy(
+  () => import("./claimLinks/ClaimLinkSendPanel"),
+);
 const BridgePanel = lazy(() =>
   import("./WalletFeatures").then((module) => ({
     default: module.BridgePanel,
@@ -382,6 +385,8 @@ export default function App({
   const [amount, setAmount] = useState("0.01");
   const [amountPercentage, setAmountPercentage] = useState(0);
   const [message, setMessage] = useState(() => t("send.defaultMessage"));
+  const [sendMode, setSendMode] = useState<"wallet" | "link">("wallet");
+  const [claimLinkInputLocked, setClaimLinkInputLocked] = useState(false);
   const [stats, setStats] = useState<JarStats>(emptyStats);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
   const [isRefreshingWalletBalance, setIsRefreshingWalletBalance] = useState(false);
@@ -1529,7 +1534,7 @@ export default function App({
             className="primary-navigation"
             aria-label={t("navigation.primaryAria")}
           >
-            {(["tip", "links", "bridge"] as const).map((page) => (
+            {(["tip", "bridge"] as const).map((page) => (
               <a
                 key={page}
                 href={`#/${page}`}
@@ -2178,7 +2183,7 @@ export default function App({
                   </small>
                 </div>
 
-                {recipientNotice && (
+                {sendMode === "wallet" && recipientNotice && (
                   <div
                     id="recipient-notice"
                     className="recipient-notice"
@@ -2192,7 +2197,10 @@ export default function App({
                   </div>
                 )}
 
-                {isCorrectNetwork && !isLoading && !isContractReady && (
+                {sendMode === "wallet" &&
+                  isCorrectNetwork &&
+                  !isLoading &&
+                  !isContractReady && (
                   <div className="panel-alert contract-alert" role="alert">
                     <p>{t("send.jarUnavailableMessage")}</p>
                     <button
@@ -2224,7 +2232,52 @@ export default function App({
                     </button>
                   </div>
                 ) : (
-                  <form onSubmit={sendTip}>
+                  <form
+                    onSubmit={
+                      sendMode === "wallet"
+                        ? sendTip
+                        : (event) => event.preventDefault()
+                    }
+                  >
+                    <div
+                      className="send-mode-toggle"
+                      role="group"
+                      aria-label={t("send.modeLabel")}
+                    >
+                      <button
+                        type="button"
+                        className={sendMode === "wallet" ? "active" : ""}
+                        aria-pressed={sendMode === "wallet"}
+                        disabled={
+                          sendMode === "link" && claimLinkInputLocked
+                        }
+                        onClick={() => {
+                          setSendMode("wallet");
+                          setSendStatus(null);
+                        }}
+                      >
+                        {t("send.modeWallet")}
+                      </button>
+                      <button
+                        type="button"
+                        className={sendMode === "link" ? "active" : ""}
+                        aria-pressed={sendMode === "link"}
+                        onClick={() => {
+                          setSendMode("link");
+                          setSendStatus(null);
+                        }}
+                      >
+                        {t("send.modeLink")}
+                      </button>
+                    </div>
+                    <p className="send-mode-description">
+                      {t(
+                        sendMode === "wallet"
+                          ? "send.modeWalletDescription"
+                          : "send.modeLinkDescription",
+                      )}
+                    </p>
+
                     <label htmlFor="amount">{t("send.amountLabel")}</label>
                     <div className="amount-input">
                       <input
@@ -2232,6 +2285,9 @@ export default function App({
                         id="amount"
                         inputMode="decimal"
                         value={amount}
+                        disabled={
+                          sendMode === "link" && claimLinkInputLocked
+                        }
                         onChange={(event) => {
                           setAmount(event.target.value);
                           setAmountPercentage(0);
@@ -2253,6 +2309,9 @@ export default function App({
                           type="button"
                           className={amount === preset ? "active" : ""}
                           aria-pressed={amount === preset}
+                          disabled={
+                            sendMode === "link" && claimLinkInputLocked
+                          }
                           onClick={() => {
                             setPresetAmount(preset);
                             setSendStatus(null);
@@ -2287,7 +2346,11 @@ export default function App({
                           setAmountFromPercentage(Number(event.target.value));
                           setSendStatus(null);
                         }}
-                        disabled={!walletBalance || walletBalance === 0n}
+                        disabled={
+                          !walletBalance ||
+                          walletBalance === 0n ||
+                          (sendMode === "link" && claimLinkInputLocked)
+                        }
                       />
                       <div className="range-labels">
                         <span>{t("send.rangeMinimum")}</span>
@@ -2305,6 +2368,9 @@ export default function App({
                     <textarea
                       id="message"
                       value={message}
+                      disabled={
+                        sendMode === "link" && claimLinkInputLocked
+                      }
                       onChange={(event) => {
                         setMessage(event.target.value);
                         setSendStatus(null);
@@ -2325,6 +2391,38 @@ export default function App({
                       })}
                     </div>
 
+                    <div hidden={sendMode !== "link"}>
+                      <Suspense
+                        fallback={
+                          <p className="feature-loading">
+                            {t("common.loading")}
+                          </p>
+                        }
+                      >
+                        <ClaimLinkSendPanel
+                          account={account}
+                          activeWalletKind={activeWalletKind}
+                          passkeySession={passkeySession}
+                          browserProvider={browserProvider}
+                          network={selectedNetwork}
+                          publicClient={publicClient}
+                          walletBalance={walletBalance}
+                          isCorrectNetwork={isCorrectNetwork}
+                          locale={locale}
+                          amountInput={amount}
+                          message={message}
+                          onConnectWallet={(kind) =>
+                            openWalletModal(kind)
+                          }
+                          onSwitchNetwork={switchToSelectedNetwork}
+                          onRefreshBalance={refreshWalletBalance}
+                          onLockedChange={setClaimLinkInputLocked}
+                        />
+                      </Suspense>
+                    </div>
+
+                    {sendMode === "wallet" && (
+                      <>
                     <div className="field-heading">
                       <label htmlFor="recipient">
                         {t("send.recipientLabel")}
@@ -2472,6 +2570,8 @@ export default function App({
                           {t("common.viewOnArcScan")}
                         </a>
                       </div>
+                    )}
+                      </>
                     )}
                   </form>
                 )}

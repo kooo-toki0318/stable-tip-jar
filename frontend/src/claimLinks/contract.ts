@@ -5,12 +5,24 @@ import {
   type PublicClient,
 } from "viem";
 
+export const CLAIM_LINK_MAX_MESSAGE_BYTES = 280;
+
 export const claimLinkEscrowAbi = [
   {
     type: "function",
     name: "createClaimLink",
     stateMutability: "payable",
     inputs: [{ name: "claimSigner", type: "address" }],
+    outputs: [{ name: "linkId", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "createClaimLink",
+    stateMutability: "payable",
+    inputs: [
+      { name: "claimSigner", type: "address" },
+      { name: "message", type: "string" },
+    ],
     outputs: [{ name: "linkId", type: "bytes32" }],
   },
   {
@@ -48,6 +60,13 @@ export const claimLinkEscrowAbi = [
         ],
       },
     ],
+  },
+  {
+    type: "function",
+    name: "getMessage",
+    stateMutability: "view",
+    inputs: [{ name: "linkId", type: "bytes32" }],
+    outputs: [{ name: "message", type: "string" }],
   },
   {
     type: "function",
@@ -150,6 +169,27 @@ export async function readClaimLinkPayment(args: {
     observedBlockNumber: blockSnapshot.number,
     observedBlockTimestamp: blockSnapshot.timestamp,
   });
+}
+
+export async function readClaimLinkMessage(args: {
+  publicClient: ClaimLinkPublicClient;
+  contractAddress: Address;
+  linkId: Hex;
+  blockNumber?: bigint;
+}): Promise<string> {
+  try {
+    const value = await args.publicClient.readContract({
+      address: args.contractAddress,
+      abi: claimLinkEscrowAbi,
+      functionName: "getMessage",
+      args: [args.linkId],
+      blockNumber: args.blockNumber,
+    });
+    return typeof value === "string" ? value : "";
+  } catch {
+    // Migration fallback for the first Arc Testnet Claim Link deployment.
+    return "";
+  }
 }
 
 export type SenderClaimLinks = Readonly<{
