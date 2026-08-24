@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+import subprocess
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -7,6 +9,22 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
         raise RuntimeError(f"{label}: expected 1 match, found {count}")
     return text.replace(old, new, 1)
 
+
+def run(*args: str, cwd: Path | None = None) -> None:
+    subprocess.run(args, cwd=cwd, check=True)
+
+
+repo_root = Path(__file__).resolve().parents[1]
+os.chdir(repo_root)
+
+branch = subprocess.check_output(
+    ["git", "branch", "--show-current"], text=True
+).strip()
+if branch != "main":
+    raise RuntimeError(f"Run this from main, not {branch!r}.")
+
+if subprocess.check_output(["git", "status", "--porcelain"], text=True).strip():
+    raise RuntimeError("Working tree must be clean before applying the patch.")
 
 circle_path = Path("frontend/src/circleWallet.ts")
 circle = circle_path.read_text()
@@ -446,4 +464,26 @@ test_path.write_text(test)
 security_test = Path("frontend/src/passkeyPersistence.test.ts")
 security_test.write_text('''import { readFileSync } from "node:fs";\nimport { describe, expect, it } from "vitest";\n\ndescribe("Passkey wallet reload persistence", () => {\n  const source = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");\n\n  it("persists only public WebAuthn metadata and restores it before browser-wallet discovery", () => {\n    expect(source).toContain('PASSKEY_WALLET_METADATA_KEY = "arc-tip-jar-passkey-wallet-v1"');\n    expect(source).toContain('const { restorePasskeyWallet } = await import("./circleWallet")');\n    expect(source).toContain("credential: session.credential");\n    expect(source).toContain("clearSavedPasskeyWallet();");\n    expect(source).not.toMatch(/PASSKEY_WALLET_METADATA_KEY[^\\n]*(?:privateKey|mnemonic|seed|secret)/i);\n  });\n});\n''')
 
-# Trigger validation workflow after the workflow file exists on main.
+frontend = repo_root / "frontend"
+run("npm", "run", "test:unit", cwd=frontend)
+run("npm", "run", "test:functions", cwd=frontend)
+run("npm", "run", "build", cwd=frontend)
+run("git", "diff", "--check", cwd=repo_root)
+
+script_path = Path(__file__).resolve()
+script_path.unlink()
+
+run(
+    "git",
+    "add",
+    "frontend/src/App.tsx",
+    "frontend/src/circleWallet.ts",
+    "frontend/src/circleWallet.test.ts",
+    "frontend/src/passkeyPersistence.test.ts",
+    "scripts/apply_passkey_reload_restore.py",
+    cwd=repo_root,
+)
+run("git", "commit", "-m", "fix: restore passkey wallet after reload", cwd=repo_root)
+run("git", "push", "origin", "main", cwd=repo_root)
+
+print("Passkey reload persistence patch tested and pushed successfully.")
