@@ -42,6 +42,10 @@ import {
 } from "./arc";
 import type { PasskeyWalletSession } from "./circleWallet";
 import {
+  clearSavedPasskeyWallet,
+  readSavedPasskeyWallet,
+} from "./passkeyPersistence";
+import {
   connectInjectedWallet,
   discoverInjectedWallets,
   isIsolatedWalletRequestActive,
@@ -324,7 +328,7 @@ function decodeSentTip(log: ActivityLog): Tip | null {
       amount: decoded.args.amount,
       timestamp: BigInt(log.timestamp),
       message: decoded.args.message,
-      txHash: log.transactionHash,
+      txHash: null,
     };
   } catch {
     return null;
@@ -913,6 +917,39 @@ export default function App({
       return;
     }
 
+    const savedPasskey = readSavedPasskeyWallet();
+    if (savedPasskey) {
+      setIsConnecting(true);
+      try {
+        const { restorePasskeyWallet } = await import("./circleWallet");
+        const session = await restorePasskeyWallet(savedPasskey.credential);
+        if (!isAddressEqual(session.address, savedPasskey.address)) {
+          clearSavedPasskeyWallet();
+          throw new Error("PASSKEY_RESTORE_ADDRESS_MISMATCH");
+        }
+        setBrowserProvider(null);
+        setActiveWalletKind("passkey");
+        setPasskeySession(session);
+        setAccount(session.address);
+        setRecipientInput(session.address);
+        setChainId(session.chainId);
+        setSelectedNetworkKey("testnet");
+        setWalletStatus(null);
+        return;
+      } catch (error) {
+        clearSavedPasskeyWallet();
+        setBrowserProvider(null);
+        setPasskeySession(null);
+        setAccount(null);
+        setChainId(null);
+        setActiveWalletKind("browser");
+        setWalletStatus(getErrorUiMessage(error));
+        return;
+      } finally {
+        setIsConnecting(false);
+      }
+    }
+
     const saved = readSavedBrowserWallet();
     const wallets = await discoverInjectedWallets();
     const selectedWallet =
@@ -1072,6 +1109,7 @@ export default function App({
       const nextAccount = getAddress(connected.address);
 
       window.localStorage.removeItem(EXPLICIT_DISCONNECT_KEY);
+      clearSavedPasskeyWallet();
       saveBrowserWallet(wallet, nextAccount);
       setBrowserProvider(provider);
       setActiveWalletKind("browser");
@@ -1106,6 +1144,8 @@ export default function App({
 
   function activatePasskeyWallet(session: PasskeyWalletSession) {
     window.localStorage.removeItem(EXPLICIT_DISCONNECT_KEY);
+    window.localStorage.removeItem(BROWSER_WALLET_METADATA_KEY);
+    setBrowserProvider(null);
     setActiveWalletKind("passkey");
     setPasskeySession(session);
     setAccount(session.address);
@@ -1135,6 +1175,7 @@ export default function App({
       setWalletMenuOpen(false);
       window.localStorage.setItem(EXPLICIT_DISCONNECT_KEY, "true");
       window.localStorage.removeItem(BROWSER_WALLET_METADATA_KEY);
+      clearSavedPasskeyWallet();
       setPasskeyFundsOpen(false);
       setAccount(null);
       setChainId(null);
