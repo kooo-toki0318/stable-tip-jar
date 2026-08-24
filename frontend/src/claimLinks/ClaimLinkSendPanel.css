@@ -1,0 +1,33 @@
+.claim-link-copy-actions > button {
+  width: 100%;
+  min-height: 52px;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.claim-link-copy-actions .secondary-button {
+  color: #dce8e2;
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.claim-link-copy-actions .secondary-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.claim-link-funded-result .claim-link-create-another {
+  width: fit-content;
+  padding: 6px 0;
+  color: #9cf5c5;
+  background: transparent;
+  border: 0;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.claim-link-funded-result .claim-link-create-another:hover {
+  color: #c6ffde;
+}
