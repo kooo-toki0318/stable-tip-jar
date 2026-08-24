@@ -546,7 +546,10 @@ export default function ClaimLinkSendPanel({
   };
 
   const startAnotherLink = () => {
-    if (!linkSaved) return;
+    if (!linkSaved && !window.confirm(t("claimLinks.manage.leaveConfirm"))) {
+      return;
+    }
+
     draftRef.current?.draft.discard();
     draftRef.current = null;
     setFundedDraft(null);
@@ -723,7 +726,7 @@ export default function ClaimLinkSendPanel({
             </button>
 
             <button
-              className="secondary-button"
+              className="primary-button"
               type="button"
               disabled={isCopyingShare}
               onClick={() => void copyShareMessage()}
@@ -756,9 +759,8 @@ export default function ClaimLinkSendPanel({
           )}
 
           <button
-            className="claim-link-create-another"
+            className="inline-action"
             type="button"
-            disabled={!linkSaved}
             onClick={startAnotherLink}
           >
             + {t("claimLinks.send.createAnotherCompact")}
