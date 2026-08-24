@@ -23,6 +23,10 @@ import { english } from "viem/accounts";
 import { arcTipJarAbi } from "./abi";
 import { claimLinkEscrowAbi } from "./claimLinks/contract";
 import { arcTestnet } from "./arc";
+import {
+  savePasskeyWallet,
+  type PasskeyCredentialMetadata,
+} from "./passkeyPersistence";
 
 const DEFAULT_CLIENT_URL = "https://modular-sdk.circle.com/v1/rpc/w3s/buidl";
 const ARC_TESTNET_CLIENT_PATH = "arcTestnet";
@@ -166,11 +170,9 @@ function recoveryFlowError(
   return error;
 }
 
-export function passkeyCredentialToOwner(credential: {
-  id: string;
-  publicKey: Hex;
-  rpId?: string;
-}): WebAuthnAccount {
+export function passkeyCredentialToOwner(
+  credential: PasskeyCredentialMetadata,
+): WebAuthnAccount {
   return toWebAuthnAccount({
     credential,
     rpId: credential.rpId,
@@ -365,6 +367,25 @@ export function isCircleConfigured(): boolean {
   return Boolean(import.meta.env.VITE_CIRCLE_CLIENT_KEY?.trim());
 }
 
+function toPasskeyCredentialMetadata(credential: {
+  id: string;
+  publicKey: Hex;
+  rpId?: string;
+}): PasskeyCredentialMetadata {
+  return {
+    id: credential.id,
+    publicKey: credential.publicKey,
+    ...(credential.rpId ? { rpId: credential.rpId } : {}),
+  };
+}
+
+export async function restorePasskeyWallet(
+  credential: PasskeyCredentialMetadata,
+): Promise<PasskeyWalletSession> {
+  const runtime = await loadCircleRuntime();
+  return buildPasskeySession(runtime, passkeyCredentialToOwner(credential));
+}
+
 export async function createPasskeyWallet(
   mode: "register" | "login",
 ): Promise<PasskeyWalletSession> {
@@ -378,9 +399,12 @@ export async function createPasskeyWallet(
     username:
       mode === "register" ? `arc-tip-jar-${crypto.randomUUID()}` : undefined,
   });
-  const owner = passkeyCredentialToOwner(credential);
+  const credentialMetadata = toPasskeyCredentialMetadata(credential);
+  const owner = passkeyCredentialToOwner(credentialMetadata);
   try {
-    return await buildPasskeySession(runtime, owner);
+    const session = await buildPasskeySession(runtime, owner);
+    savePasskeyWallet(session.address, credentialMetadata);
+    return session;
   } catch (error) {
     if (mode === "register") {
       throw new Error("PASSKEY_CREATED_WALLET_INIT_FAILED", { cause: error });
@@ -595,6 +619,7 @@ export async function recoverPasskeyWallet(
     .catch((error) => {
       throw recoveryFlowError("RECOVERY_PASSKEY_CREATE_FAILED", error);
     });
+  const credentialMetadata = toPasskeyCredentialMetadata(credential);
   const recoveryBundler = createBundlerClient({
     account: temporarySmartAccount,
     chain: arcTestnet,
@@ -620,13 +645,14 @@ export async function recoverPasskeyWallet(
   onProgress?.("reopening");
   const session = await buildPasskeySession(
     runtime,
-    passkeyCredentialToOwner(credential),
+    passkeyCredentialToOwner(credentialMetadata),
   ).catch((error) => {
     throw recoveryFlowError("RECOVERED_WALLET_OPEN_FAILED", error, hash);
   });
   if (!isAddressEqual(session.address, walletAddress)) {
     throw new Error("RECOVERED_WALLET_MISMATCH");
   }
+  savePasskeyWallet(session.address, credentialMetadata);
   return {
     userOperationHash: hash,
     transactionHash,
