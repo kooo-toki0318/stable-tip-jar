@@ -445,3 +445,5 @@ test_path.write_text(test)
 
 security_test = Path("frontend/src/passkeyPersistence.test.ts")
 security_test.write_text('''import { readFileSync } from "node:fs";\nimport { describe, expect, it } from "vitest";\n\ndescribe("Passkey wallet reload persistence", () => {\n  const source = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");\n\n  it("persists only public WebAuthn metadata and restores it before browser-wallet discovery", () => {\n    expect(source).toContain('PASSKEY_WALLET_METADATA_KEY = "arc-tip-jar-passkey-wallet-v1"');\n    expect(source).toContain('const { restorePasskeyWallet } = await import("./circleWallet")');\n    expect(source).toContain("credential: session.credential");\n    expect(source).toContain("clearSavedPasskeyWallet();");\n    expect(source).not.toMatch(/PASSKEY_WALLET_METADATA_KEY[^\\n]*(?:privateKey|mnemonic|seed|secret)/i);\n  });\n});\n''')
+
+# Trigger validation workflow after the workflow file exists on main.
