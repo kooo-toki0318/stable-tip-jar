@@ -328,7 +328,7 @@ function decodeSentTip(log: ActivityLog): Tip | null {
       amount: decoded.args.amount,
       timestamp: BigInt(log.timestamp),
       message: decoded.args.message,
-      txHash: null,
+      txHash: log.transactionHash,
     };
   } catch {
     return null;
