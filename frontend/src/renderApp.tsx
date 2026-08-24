@@ -4,6 +4,7 @@ import type { ClaimLinkBootstrapResult } from "./claimLinks/bootstrap";
 import "./i18n";
 import App from "./App";
 import "./styles.css";
+import "./claimLinkPolish.css";
 
 export function renderApp(
   claimLinkBootstrap: ClaimLinkBootstrapResult,
