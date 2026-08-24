@@ -1,15 +1,17 @@
 import { getAddress, isAddress, type Address, type Hex } from "viem";
-import type {
-  PasskeyCredentialMetadata,
-  PasskeyWalletSession,
-} from "./circleWallet";
 
-const PASSKEY_WALLET_METADATA_KEY = "arc-tip-jar-passkey-wallet-v1";
+export type PasskeyCredentialMetadata = Readonly<{
+  id: string;
+  publicKey: Hex;
+  rpId?: string;
+}>;
 
-type SavedPasskeyWallet = Readonly<{
+export type SavedPasskeyWallet = Readonly<{
   address: Address;
   credential: PasskeyCredentialMetadata;
 }>;
+
+const PASSKEY_WALLET_METADATA_KEY = "arc-tip-jar-passkey-wallet-v1";
 
 export function clearSavedPasskeyWallet(): void {
   try {
@@ -63,12 +65,13 @@ export function readSavedPasskeyWallet(): SavedPasskeyWallet | null {
   }
 }
 
-export function savePasskeyWallet(session: PasskeyWalletSession): boolean {
-  if (!session.credential) return false;
-
+export function savePasskeyWallet(
+  address: Address,
+  credential: PasskeyCredentialMetadata,
+): boolean {
   const metadata: SavedPasskeyWallet = {
-    address: getAddress(session.address),
-    credential: session.credential,
+    address: getAddress(address),
+    credential,
   };
 
   try {
